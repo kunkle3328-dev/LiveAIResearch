@@ -1,0 +1,8 @@
+{
+  "name": "Live Voice Assistant",
+  "description": "An enterprise-grade, real-time voice assistant powered by Gemini Live API using WebSocket streaming.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
