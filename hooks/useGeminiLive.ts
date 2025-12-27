@@ -198,7 +198,7 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
             if (msg.serverContent?.inputTranscription?.text) {
                setTranscripts(prev => {
                    const last = prev[prev.length - 1];
-                   if (last && last.role === 'user') {
+                   if (last && last.role === 'Corey') {
                        return [...prev.slice(0, -1), { ...last, text: last.text + msg.serverContent!.inputTranscription!.text }];
                    }
                    return [...prev, { id: Date.now().toString(), role: 'user', text: msg.serverContent!.inputTranscription!.text, timestamp: new Date() }];
