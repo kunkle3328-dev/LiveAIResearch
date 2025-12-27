@@ -4,9 +4,9 @@ import { GoogleGenAI, Modality } from '@google/genai';
 import { LearningSource, PodcastScriptLine, PodcastBlueprint, PodcastType } from '../types';
 import { mergeBase64PCM } from '../utils/audioUtils';
 
-const MODEL_TEXT = 'gemini-3-pro-preview'; 
-const MODEL_AUDIO = 'gemini-2.5-flash-preview-tts';
-const MODEL_IMAGE = 'gemini-2.5-flash-image';
+const MODEL_TEXT = 'gemini-2.0-flash-exp'; 
+const MODEL_AUDIO = 'gemini-2.5-flash-preview-tts'; // TTS is specific, keep if working, otherwise 2.0-flash-exp
+const MODEL_IMAGE = 'gemini-2.0-flash-exp'; // Use multimodal capability for image
 
 export const useLearningAI = () => {
   const [generatingCount, setGeneratingCount] = useState(0);
@@ -167,8 +167,7 @@ export const useLearningAI = () => {
         contents: prompt,
         config: {
           responseMimeType: 'application/json',
-          maxOutputTokens: 8192, 
-          thinkingConfig: { thinkingBudget: 2048 },
+          // Removed thinkingConfig as it might not be supported on 2.0-flash-exp yet in all regions
         }
       });
 
@@ -283,8 +282,10 @@ export const useLearningAI = () => {
       Style: ${style}, Futuristic, Enterprise Tech, Dark Mode, Neon accents. 
       High contrast, 8k resolution, minimalist but detailed. Center composition.`;
 
+      // NOTE: Using 2.0-flash-exp to ensure availability if image model is flaky
+      // Ideally use imagen-3.0-generate-001 if available
       const response = await ai.models.generateContent({
-        model: MODEL_IMAGE,
+        model: MODEL_IMAGE, 
         contents: { parts: [{ text: prompt }] }
       });
 
@@ -334,7 +335,7 @@ export const useLearningAI = () => {
      Question: ${question}`;
 
      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: MODEL_TEXT,
         contents: prompt,
         config: {
             tools: [{ googleSearch: {} }] 

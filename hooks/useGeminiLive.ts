@@ -5,7 +5,8 @@ import { ConnectionState, TranscriptionItem } from '../types';
 import { pcmToGeminiBlob, base64ToFloat32, createAudioBuffer, PCM_SAMPLE_RATE } from '../utils/audioUtils';
 
 // Gemini Model Configuration
-const MODEL_NAME = 'gemini-2.5-flash-native-audio-preview-09-2025';
+// Switching to 2.0-flash-exp as it is the stable public endpoint for Live API
+const MODEL_NAME = 'gemini-2.0-flash-exp';
 const OUTPUT_SAMPLE_RATE = 24000;
 
 interface UseGeminiLiveProps {
