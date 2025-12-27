@@ -2,8 +2,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PodcastEpisode, LearningSource } from '../../types';
 import { SourceIntake } from './SourceIntake';
-import { CurriculumBuilder as PodcastGenerator } from './CurriculumBuilder'; // Reusing file but Logic is updated
-import { LessonPlayer as PodcastPlayer } from './LessonPlayer'; // Reusing file but Logic is updated
+import { CurriculumBuilder as PodcastGenerator } from './CurriculumBuilder'; 
+import { LessonPlayer as PodcastPlayer } from './LessonPlayer'; 
 import { useLearningAI } from '../../hooks/useLearningAI';
 
 export const LearningMode: React.FC = () => {
@@ -12,7 +12,6 @@ export const LearningMode: React.FC = () => {
   const [episodes, setEpisodes] = useState<PodcastEpisode[]>([]);
   const [activeEpisode, setActiveEpisode] = useState<PodcastEpisode | null>(null);
   
-  // Dashboard Chat State (Simplified for now)
   const { chatWithSources } = useLearningAI();
 
   const handleSourceAdd = (source: LearningSource) => {
@@ -29,6 +28,12 @@ export const LearningMode: React.FC = () => {
   const playEpisode = (episode: PodcastEpisode) => {
     setActiveEpisode(episode);
     setView('player');
+  };
+
+  // Helper to get raw text for the active episode's context
+  const getEpisodeContext = (episode: PodcastEpisode): string => {
+      const relevantSources = sources.filter(s => episode.sourceIds.includes(s.id));
+      return relevantSources.map(s => `[${s.title}]: ${s.content.substring(0, 5000)}`).join('\n\n');
   };
 
   return (
@@ -150,9 +155,9 @@ export const LearningMode: React.FC = () => {
             {view === 'player' && activeEpisode && (
                 <PodcastPlayer 
                     episode={activeEpisode}
+                    sourceContext={getEpisodeContext(activeEpisode)}
                     onBack={() => setView('dashboard')}
                     onAskQuestion={async (question) => {
-                         // Find the sources used in this episode
                          const relevantSources = sources.filter(s => activeEpisode.sourceIds.includes(s.id));
                          return await chatWithSources(question, relevantSources, []);
                     }}

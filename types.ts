@@ -59,12 +59,36 @@ export interface PodcastScriptLine {
   text: string;
 }
 
+export type PodcastType = 'Standard' | 'Teaching';
+
+export interface PodcastChapter {
+  title: string;
+  startTime: number; // estimated seconds
+  objective: string;
+  keyTakeaways: string[];
+}
+
+export interface PodcastBlueprint {
+  learningObjectives: string[];
+  targetAudience: string;
+  teachingStyle: string;
+  chapters: {
+    title: string;
+    objective: string;
+    keyPoints: string[];
+  }[];
+  glossary: { term: string; definition: string }[];
+}
+
 export interface PodcastEpisode {
   id: string;
   title: string;
   topic: string;
-  style: 'Deep Dive' | 'Quick Summary' | 'Debate' | 'Storytelling';
+  type: PodcastType;
+  style: string;
   script: PodcastScriptLine[];
+  blueprint?: PodcastBlueprint;
+  chapters?: PodcastChapter[];
   audioBase64?: string; // Cache the audio data
   coverImageBase64?: string; // Podcast cover art
   sourceIds: string[];

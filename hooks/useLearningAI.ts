@@ -1,7 +1,7 @@
 
 import { useState, useCallback } from 'react';
 import { GoogleGenAI, Modality } from '@google/genai';
-import { LearningSource, PodcastScriptLine } from '../types';
+import { LearningSource, PodcastScriptLine, PodcastBlueprint, PodcastType } from '../types';
 import { mergeBase64PCM } from '../utils/audioUtils';
 
 const MODEL_TEXT = 'gemini-3-pro-preview'; 
@@ -26,44 +26,45 @@ export const useLearningAI = () => {
     return text.trim();
   };
 
-  const generatePodcastScript = useCallback(async (
+  // 1. Generate Blueprint (Teaching Mode)
+  const generateBlueprint = useCallback(async (
     topic: string,
-    style: string,
+    audience: string,
     sources: LearningSource[]
-  ): Promise<{ title: string; script: PodcastScriptLine[] } | null> => {
+  ): Promise<PodcastBlueprint | null> => {
     setGeneratingCount(c => c + 1);
     try {
       const ai = getClient();
-      const sourceContext = sources.map(s => `SOURCE (${s.title}): ${s.content.substring(0, 25000)}...`).join('\n\n');
+      const sourceContext = sources.map(s => `SOURCE (${s.title}): ${s.content.substring(0, 15000)}...`).join('\n\n');
       
       const prompt = `
-        You are an expert educational podcast producer.
+        You are an expert instructional designer creating a "Teaching Podcast" blueprint.
         TOPIC: ${topic}
-        STYLE: ${style}
+        TARGET AUDIENCE: ${audience}
         
         SOURCES:
         ${sourceContext}
         
-        Task: Create a deep-dive podcast script between "Host" (Energetic) and "Expert" (Calm).
+        TASK:
+        Create a structured learning plan.
+        1. Define 3-5 clear Learning Objectives.
+        2. Outline 4-6 Chapters that logically progress from basics to advanced.
+        3. Extract 3-5 key glossary terms from the sources.
         
-        LENGTH REQUIREMENTS:
-        - The episode MUST be substantial (approx 5-15 minutes spoken).
-        - Aim for 800 to 2000 words total.
-        - Create 40-60 exchanges.
-        
-        STRUCTURE:
-        1. Hook: Grab attention immediately.
-        2. Deep Dive: Explore the "Why" and "How", not just the "What".
-        3. Examples: Use specific details from the sources.
-        4. Key Takeaways: Summarize actionable points.
-        
-        OUTPUT FORMAT:
-        Return ONLY valid JSON.
+        OUTPUT JSON:
         {
-          "title": "Episode Title",
-          "script": [
-            { "speaker": "Host", "text": "..." },
-            { "speaker": "Expert", "text": "..." }
+          "learningObjectives": ["string"],
+          "targetAudience": "${audience}",
+          "teachingStyle": "Socratic",
+          "chapters": [
+            {
+              "title": "string",
+              "objective": "string",
+              "keyPoints": ["string"]
+            }
+          ],
+          "glossary": [
+            { "term": "string", "definition": "string" }
           ]
         }
       `;
@@ -71,31 +72,111 @@ export const useLearningAI = () => {
       const response = await ai.models.generateContent({
         model: MODEL_TEXT,
         contents: prompt,
+        config: { responseMimeType: 'application/json' }
+      });
+
+      const parsed = JSON.parse(cleanJson(response.text || '{}'));
+      return parsed.chapters ? parsed : null;
+    } catch (e) {
+      console.error("Blueprint Gen Error:", e);
+      return null;
+    } finally {
+      setGeneratingCount(c => Math.max(0, c - 1));
+    }
+  }, []);
+
+  // 2. Generate Script (Standard or Teaching)
+  const generatePodcastScript = useCallback(async (
+    topic: string,
+    style: string,
+    type: PodcastType,
+    sources: LearningSource[],
+    blueprint?: PodcastBlueprint
+  ): Promise<{ title: string; script: PodcastScriptLine[] } | null> => {
+    setGeneratingCount(c => c + 1);
+    try {
+      const ai = getClient();
+      const sourceContext = sources.map(s => `SOURCE (${s.title}): ${s.content.substring(0, 25000)}...`).join('\n\n');
+      
+      let prompt = '';
+
+      if (type === 'Teaching' && blueprint) {
+         prompt = `
+            You are a "Teaching Podcast" host pair: Host (Energetic) and Expert (Calm).
+            
+            BLUEPRINT:
+            ${JSON.stringify(blueprint)}
+            
+            SOURCES:
+            ${sourceContext}
+            
+            TASK:
+            Write a COMPREHENSIVE, WORD-FOR-WORD script.
+            The script MUST be sufficiently long (aim for 2500 words or ~40-50 dialogue turns).
+            
+            STRUCTURE:
+            - Iterate through EVERY chapter in the blueprint.
+            - For EACH chapter:
+              1. Host introduces the concept clearly.
+              2. Expert explains it in deep detail using the sources.
+              3. Provide multiple specific examples from the text.
+              4. Have a back-and-forth discussion.
+              5. Host asks a "Checkpoint" question to the listener.
+            
+            IMPORTANT:
+            - Do not summarize quickly.
+            - Do not skip chapters.
+            - This is a full lesson.
+            
+            OUTPUT JSON:
+            {
+              "title": "Episode Title",
+              "script": [
+                { "speaker": "Host", "text": "..." },
+                { "speaker": "Expert", "text": "..." }
+              ]
+            }
+         `;
+      } else {
+         // Standard Podcast Prompt
+         prompt = `
+            You are an expert educational podcast producer.
+            TOPIC: ${topic}
+            STYLE: ${style}
+            
+            SOURCES:
+            ${sourceContext}
+            
+            Task: Create a deep-dive podcast script between "Host" (Energetic) and "Expert" (Calm).
+            Aim for 2000+ words to create a substantial episode (10+ minutes).
+            Cover the topic exhaustively.
+            
+            OUTPUT JSON:
+            {
+              "title": "Episode Title",
+              "script": [
+                { "speaker": "Host", "text": "..." },
+                { "speaker": "Expert", "text": "..." }
+              ]
+            }
+         `;
+      }
+
+      const response = await ai.models.generateContent({
+        model: MODEL_TEXT,
+        contents: prompt,
         config: {
           responseMimeType: 'application/json',
+          maxOutputTokens: 8192, 
           thinkingConfig: { thinkingBudget: 2048 },
         }
       });
 
-      const rawText = response.text;
-      if (!rawText) return null;
-
-      const cleaned = cleanJson(rawText);
-      let parsed;
-      try {
-        parsed = JSON.parse(cleaned);
-      } catch (e) {
-        console.error("JSON Parse Error", e);
-        return null;
-      }
-
-      if (parsed.podcast) parsed = parsed.podcast;
-
-      if (!parsed || !parsed.script || !Array.isArray(parsed.script)) {
-        return null;
-      }
-
-      return parsed;
+      const parsed = JSON.parse(cleanJson(response.text || '{}'));
+      const data = parsed.podcast || parsed;
+      
+      if (!data.script || !Array.isArray(data.script)) return null;
+      return data;
     } catch (e) {
       console.error("Script Gen Error:", e);
       return null;
@@ -104,7 +185,6 @@ export const useLearningAI = () => {
     }
   }, []);
 
-  // Updated Audio Synthesis with Concurrency Control
   const synthesizePodcastAudio = useCallback(async (
     script: PodcastScriptLine[],
     onProgress?: (percentage: number) => void
@@ -114,7 +194,15 @@ export const useLearningAI = () => {
       if (!script || !script.length) throw new Error("Empty script");
 
       const ai = getClient();
-      const CHUNK_SIZE = 3; 
+      
+      // CRITICAL CHANGE: Sequential processing.
+      // Parallel processing often hits rate limits or token limits per minute, resulting in dropped chunks.
+      // Sequential is slower but guarantees completeness for long scripts.
+      
+      // Chunking: Process 1 line at a time to ensure maximum stability, 
+      // or small groups if lines are very short. 
+      // Given "Teaching" mode usually has long paragraphs, 1 line per chunk is safer.
+      const CHUNK_SIZE = 1; 
       const chunks: PodcastScriptLine[][] = [];
       for (let i = 0; i < script.length; i += CHUNK_SIZE) {
         chunks.push(script.slice(i, i + CHUNK_SIZE));
@@ -123,16 +211,15 @@ export const useLearningAI = () => {
       const results: string[] = new Array(chunks.length).fill('');
       let completed = 0;
       
-      // Concurrency limit
-      const MAX_CONCURRENT = 3;
-      
-      const processChunk = async (chunkIndex: number) => {
-          const chunk = chunks[chunkIndex];
+      for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
           const conversationText = chunk.map(line => `${line.speaker}: ${line.text}`).join('\n');
           const prompt = `TTS the following conversation:\n\n${conversationText}`;
 
           let retries = 0;
-          while (retries < 3) {
+          let success = false;
+          
+          while (retries < 4 && !success) {
               try {
                   const response = await ai.models.generateContent({
                       model: MODEL_AUDIO,
@@ -151,37 +238,30 @@ export const useLearningAI = () => {
                   });
                   const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
                   if (audioData) {
-                      results[chunkIndex] = audioData;
-                      return;
+                      results[i] = audioData;
+                      success = true;
+                  } else {
+                      throw new Error("Empty audio response");
                   }
-                  throw new Error("No audio data");
               } catch (e) {
-                  console.warn(`Chunk ${chunkIndex} fail (try ${retries+1})`, e);
                   retries++;
-                  await new Promise(r => setTimeout(r, 1000 * Math.pow(2, retries)));
+                  // Exponential backoff
+                  const delay = 1000 * Math.pow(2, retries);
+                  console.warn(`Chunk ${i} failed (Attempt ${retries}). Retrying in ${delay}ms...`);
+                  await new Promise(r => setTimeout(r, delay));
               }
           }
-          console.error(`Chunk ${chunkIndex} failed permanently.`);
-          // We intentionally leave it empty or insert a silent placeholder if desired, 
-          // but for now we skip to avoid breaking the whole merge.
-      };
-
-      // Simple concurrency queue
-      const queue = chunks.map((_, i) => i);
-      const workers = Array(Math.min(MAX_CONCURRENT, chunks.length)).fill(null).map(async () => {
-          while (queue.length > 0) {
-              const idx = queue.shift();
-              if (idx !== undefined) {
-                  await processChunk(idx);
-                  completed++;
-                  if (onProgress) onProgress(Math.round((completed / chunks.length) * 100));
-              }
+          
+          if (!success) {
+              console.error(`Failed to generate audio for chunk ${i} after retries.`);
+              // We continue, but this will result in a gap. 
+              // Alternatively, aborting might be better, but for UX, a gap is better than total failure.
           }
-      });
 
-      await Promise.all(workers);
+          completed++;
+          if (onProgress) onProgress(Math.round((completed / chunks.length) * 100));
+      }
 
-      // Filter out empty results if any failed
       const validAudioParts = results.filter(r => !!r);
       if (validAudioParts.length === 0) return null;
 
@@ -265,6 +345,7 @@ export const useLearningAI = () => {
 
   return {
     isGenerating,
+    generateBlueprint,
     generatePodcastScript,
     synthesizePodcastAudio,
     generateCoverImage,

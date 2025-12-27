@@ -2,11 +2,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { ConnectionState, TranscriptionItem } from '../types';
-import { pcmToGeminiBlob, base64ToFloat32, createAudioBuffer, PCM_SAMPLE_RATE, calculateVolume } from '../utils/audioUtils';
+import { pcmToGeminiBlob, base64ToFloat32, createAudioBuffer, PCM_SAMPLE_RATE } from '../utils/audioUtils';
 
-// Gemini Model Configuration - Updated to correct stable preview version
+// Gemini Model Configuration
 const MODEL_NAME = 'gemini-2.5-flash-native-audio-preview-09-2025';
-const OUTPUT_SAMPLE_RATE = 24000; // Gemini default output
+const OUTPUT_SAMPLE_RATE = 24000;
 
 interface UseGeminiLiveProps {
   systemInstruction: string;
@@ -17,7 +17,8 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
   const [connectionState, setConnectionState] = useState<ConnectionState>(ConnectionState.DISCONNECTED);
   const [error, setError] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<TranscriptionItem[]>([]);
-  
+  const [volume, setVolume] = useState(0);
+
   // Audio Contexts
   const inputContextRef = useRef<AudioContext | null>(null);
   const outputContextRef = useRef<AudioContext | null>(null);
@@ -28,15 +29,17 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
   const inputSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const outputNodeRef = useRef<GainNode | null>(null);
   
-  // Session Ref for sending data outside the audio loop
+  // Analysers for Visualization
+  const inputAnalyserRef = useRef<AnalyserNode | null>(null);
+  const outputAnalyserRef = useRef<AnalyserNode | null>(null);
+  const volumeAnimationRef = useRef<number | null>(null);
+
+  // Session Ref
   const activeSessionRef = useRef<any>(null);
   
   // Playback state
   const nextStartTimeRef = useRef<number>(0);
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
-  
-  // Visualizer State
-  const [volume, setVolume] = useState(0);
 
   // Initialize Audio Contexts
   const ensureAudioContexts = useCallback(() => {
@@ -52,6 +55,38 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
     }
   }, []);
 
+  // Volume Analysis Loop (Combines Input & Output)
+  const startVolumeAnalysis = useCallback(() => {
+      const analyze = () => {
+          let maxVol = 0;
+          const data = new Uint8Array(32); // Small FFT size for performance
+
+          // Check Input (User)
+          if (inputAnalyserRef.current) {
+              inputAnalyserRef.current.getByteFrequencyData(data);
+              let sum = 0;
+              for(let i=0; i<data.length; i++) sum += data[i];
+              const avg = sum / data.length;
+              maxVol = Math.max(maxVol, avg / 255);
+          }
+
+          // Check Output (AI)
+          if (outputAnalyserRef.current) {
+              outputAnalyserRef.current.getByteFrequencyData(data);
+              let sum = 0;
+              for(let i=0; i<data.length; i++) sum += data[i];
+              const avg = sum / data.length;
+              maxVol = Math.max(maxVol, avg / 255);
+          }
+
+          // Apply some gain/sensitivity and set state
+          setVolume(Math.min(1, maxVol * 1.5)); 
+
+          volumeAnimationRef.current = requestAnimationFrame(analyze);
+      };
+      analyze();
+  }, []);
+
   const connect = useCallback(async () => {
     if (!process.env.API_KEY) {
       setError("API Key not found in environment variables.");
@@ -64,22 +99,55 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
       
       ensureAudioContexts();
       
-      // Resume contexts if suspended (browser autoplay policy)
       if (inputContextRef.current?.state === 'suspended') await inputContextRef.current.resume();
       if (outputContextRef.current?.state === 'suspended') await outputContextRef.current.resume();
 
-      // Get Microphone Stream
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      // Initialize Gemini Client
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
-      // Setup Output Node (Speaker)
+      // --- Setup Output Audio Chain (AI Voice) ---
       const outputCtx = outputContextRef.current!;
+      
+      // Create Analyser for Output
+      const outputAnalyser = outputCtx.createAnalyser();
+      outputAnalyser.fftSize = 64;
+      outputAnalyser.smoothingTimeConstant = 0.5;
+      outputAnalyserRef.current = outputAnalyser;
+
+      // Create Gain Node (Master Output)
       outputNodeRef.current = outputCtx.createGain();
-      outputNodeRef.current.connect(outputCtx.destination);
+      
+      // Connect: OutputGain -> Analyser -> Destination
+      outputNodeRef.current.connect(outputAnalyser);
+      outputAnalyser.connect(outputCtx.destination);
+      
       nextStartTimeRef.current = outputCtx.currentTime;
+
+
+      // --- Setup Input Audio Chain (Mic) ---
+      const inputCtx = inputContextRef.current!;
+      
+      // Create Analyser for Input
+      const inputAnalyser = inputCtx.createAnalyser();
+      inputAnalyser.fftSize = 64;
+      inputAnalyser.smoothingTimeConstant = 0.5;
+      inputAnalyserRef.current = inputAnalyser;
+
+      const source = inputCtx.createMediaStreamSource(stream);
+      const processor = inputCtx.createScriptProcessor(4096, 1, 1);
+      
+      // Connect: Mic -> Analyser -> Processor -> Destination
+      source.connect(inputAnalyser);
+      inputAnalyser.connect(processor);
+      processor.connect(inputCtx.destination);
+      
+      inputSourceRef.current = source;
+      processorRef.current = processor;
+
+      // Start Volume Loop
+      startVolumeAnalysis();
 
       // Connect to Live API
       const sessionPromise = ai.live.connect({
@@ -90,8 +158,8 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
             voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } },
           },
           systemInstruction: systemInstruction,
-          inputAudioTranscription: {}, // Request transcription for user
-          outputAudioTranscription: {}, // Request transcription for model
+          inputAudioTranscription: {}, 
+          outputAudioTranscription: {}, 
           tools: [{ googleSearch: {} }],
         },
         callbacks: {
@@ -101,120 +169,67 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
             setTranscripts(prev => [...prev, {
               id: Date.now().toString(),
               role: 'system',
-              text: 'Connected to Gemini Live Enterprise Assistant.',
+              text: 'Connected to Nexus Voice.',
               timestamp: new Date()
             }]);
 
-            // Start Audio Streaming Pipeline
-            if (!inputContextRef.current) return;
-            const inputCtx = inputContextRef.current;
-            const source = inputCtx.createMediaStreamSource(stream);
-            // ScriptProcessor is deprecated but reliable for getting raw PCM data across browsers for this purpose
-            const processor = inputCtx.createScriptProcessor(4096, 1, 1);
-            
+            // Audio Streaming
             processor.onaudioprocess = (e) => {
               const inputData = e.inputBuffer.getChannelData(0);
-              
-              // Calculate volume for visualizer
-              const vol = calculateVolume(inputData);
-              setVolume(vol);
-
               const pcmBlob = pcmToGeminiBlob(inputData, PCM_SAMPLE_RATE);
-              
-              // Send to Gemini
               sessionPromise.then(session => {
                 activeSessionRef.current = session;
                 session.sendRealtimeInput({ media: pcmBlob });
               });
             };
-
-            source.connect(processor);
-            processor.connect(inputCtx.destination);
-            
-            inputSourceRef.current = source;
-            processorRef.current = processor;
           },
           onmessage: async (msg: LiveServerMessage) => {
-            // 1. Handle Transcriptions
+            // Transcriptions
             if (msg.serverContent?.outputTranscription?.text) {
                setTranscripts(prev => {
                 const last = prev[prev.length - 1];
                 if (last && last.role === 'assistant') {
-                    return [
-                        ...prev.slice(0, -1),
-                        { ...last, text: last.text + msg.serverContent!.outputTranscription!.text }
-                    ];
+                    return [...prev.slice(0, -1), { ...last, text: last.text + msg.serverContent!.outputTranscription!.text }];
                 }
-                return [...prev, {
-                    id: Date.now().toString(),
-                    role: 'assistant',
-                    text: msg.serverContent!.outputTranscription!.text,
-                    timestamp: new Date()
-                }];
+                return [...prev, { id: Date.now().toString(), role: 'assistant', text: msg.serverContent!.outputTranscription!.text, timestamp: new Date() }];
                });
             }
             if (msg.serverContent?.inputTranscription?.text) {
                setTranscripts(prev => {
                    const last = prev[prev.length - 1];
                    if (last && last.role === 'user') {
-                       return [
-                           ...prev.slice(0, -1),
-                           { ...last, text: last.text + msg.serverContent!.inputTranscription!.text }
-                       ];
+                       return [...prev.slice(0, -1), { ...last, text: last.text + msg.serverContent!.inputTranscription!.text }];
                    }
-                   return [...prev, {
-                       id: Date.now().toString(),
-                       role: 'user',
-                       text: msg.serverContent!.inputTranscription!.text,
-                       timestamp: new Date()
-                   }];
+                   return [...prev, { id: Date.now().toString(), role: 'user', text: msg.serverContent!.inputTranscription!.text, timestamp: new Date() }];
                });
             }
 
-            // 2. Handle Interruption (Barge-in)
-            const interrupted = msg.serverContent?.interrupted;
-            if (interrupted) {
-              console.log('Interruption signal received');
-              // Stop all currently playing audio
-              activeSourcesRef.current.forEach(source => {
-                try { source.stop(); } catch (e) {}
-              });
+            // Interruptions
+            if (msg.serverContent?.interrupted) {
+              activeSourcesRef.current.forEach(source => { try { source.stop(); } catch (e) {} });
               activeSourcesRef.current.clear();
-              
-              if (outputContextRef.current) {
-                nextStartTimeRef.current = outputContextRef.current.currentTime;
-              }
+              if (outputContextRef.current) nextStartTimeRef.current = outputContextRef.current.currentTime;
               return;
             }
 
-            // 3. Handle Audio Output
+            // Audio Output
             const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
             if (audioData) {
               if (!outputContextRef.current) return;
               const outputCtx = outputContextRef.current;
-              
               const float32Data = base64ToFloat32(audioData);
               const audioBuffer = createAudioBuffer(outputCtx, float32Data, OUTPUT_SAMPLE_RATE);
-              
               const source = outputCtx.createBufferSource();
               source.buffer = audioBuffer;
               source.connect(outputNodeRef.current!);
               
-              // Schedule playback
-              // Ensure we don't schedule in the past
               const now = outputCtx.currentTime;
               const startAt = Math.max(nextStartTimeRef.current, now + 0.05);
-              
               source.start(startAt);
-              
-              // Update queue cursor
               nextStartTimeRef.current = startAt + audioBuffer.duration;
               
-              // Track active source for cancellation
               activeSourcesRef.current.add(source);
-              source.onended = () => {
-                activeSourcesRef.current.delete(source);
-              };
+              source.onended = () => activeSourcesRef.current.delete(source);
             }
           },
           onclose: () => {
@@ -224,13 +239,7 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
           },
           onerror: (err) => {
             console.error('Connection error:', err);
-            // Handle Network Errors specifically
-            const errorMsg = err instanceof Error ? err.message : 'Unknown connection error';
-            if (errorMsg.includes('Network error') || errorMsg.includes('WebSocket')) {
-                 setError('Connection failed. Please check your firewall or API key.');
-            } else {
-                 setError(errorMsg);
-            }
+            setError(err instanceof Error ? err.message : "Connection failed");
             setConnectionState(ConnectionState.ERROR);
             activeSessionRef.current = null;
           }
@@ -242,7 +251,7 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
       setError(err instanceof Error ? err.message : "Failed to connect");
       setConnectionState(ConnectionState.ERROR);
     }
-  }, [ensureAudioContexts, systemInstruction, voiceName]);
+  }, [ensureAudioContexts, startVolumeAnalysis, systemInstruction, voiceName]);
 
   const disconnect = useCallback(() => {
     if (streamRef.current) {
@@ -259,7 +268,21 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
       inputSourceRef.current.disconnect();
       inputSourceRef.current = null;
     }
+    if (inputAnalyserRef.current) {
+        inputAnalyserRef.current.disconnect();
+        inputAnalyserRef.current = null;
+    }
+    if (outputAnalyserRef.current) {
+        outputAnalyserRef.current.disconnect();
+        outputAnalyserRef.current = null;
+    }
     
+    if (volumeAnimationRef.current) {
+        cancelAnimationFrame(volumeAnimationRef.current);
+        volumeAnimationRef.current = null;
+    }
+    setVolume(0);
+
     activeSourcesRef.current.forEach(s => {
       try { s.stop(); } catch(e){}
     });
@@ -273,24 +296,13 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
     activeSessionRef.current = null;
 
     setConnectionState(ConnectionState.DISCONNECTED);
-    setTranscripts(prev => [...prev, {
-        id: Date.now().toString(),
-        role: 'system',
-        text: 'Session ended.',
-        timestamp: new Date()
-    }]);
-    
+    setTranscripts(prev => [...prev, { id: Date.now().toString(), role: 'system', text: 'Session ended.', timestamp: new Date() }]);
   }, []);
   
   const sendVideoFrame = useCallback((base64Data: string) => {
     if (connectionState === ConnectionState.CONNECTED && activeSessionRef.current) {
       try {
-        activeSessionRef.current.sendRealtimeInput({
-            media: {
-                mimeType: 'image/jpeg',
-                data: base64Data
-            }
-        });
+        activeSessionRef.current.sendRealtimeInput({ media: { mimeType: 'image/jpeg', data: base64Data } });
       } catch (e) {
           console.error("Error sending video frame:", e);
       }
