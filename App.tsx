@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { GoogleGenAI, Modality } from '@google/genai';
 import { useGeminiLive } from './hooks/useGeminiLive';
@@ -6,147 +7,120 @@ import { ConnectionState, VoiceProfile, VoiceName } from './types';
 import { base64ToFloat32, createAudioBuffer } from './utils/audioUtils';
 import { LearningMode } from './components/learning/LearningMode';
 
-// System Prompts
-const TURN_CONTROL_PROMPT = `
-You are operating in a real-time voice streaming environment with Voice Activity Detection (VAD) and barge-in enabled. Your job is to behave in a way that makes turn-taking feel natural and immediate.
+const API_KEY = process.env.API_KEY as string;
 
-You MUST assume audio capture is continuous and that silence detection is used to determine when the user has finished speaking.
+// --- NATIVE AUDIO HUMANIZATION PROMPTS ---
 
-CORE RULES FOR TURN CONTROL
-
-1. END-OF-SPEECH AWARENESS
-- Assume the user has finished speaking when:
-  - Their speech cadence stops
-  - A short silence occurs
-- Do NOT wait for explicit confirmation words.
-- Do NOT continue “listening” mentally once intent is clear.
-
-2. IMMEDIATE RESPONSE TRIGGER
-- Once user speech ends, respond immediately.
-- If your response would be long, start with a short acknowledgment and continue only if not interrupted.
-
-3. BARGE-IN HANDLING (CRITICAL)
-- If the user begins speaking while you are talking:
-  - STOP speaking immediately.
-  - Do NOT finish your sentence.
-  - Respond only with a short acknowledgment:
-    “Okay—go ahead.”
-  - Return to listening mode instantly.
-
-4. NO COMPETING AUDIO
-- Never talk over the user.
-- Never attempt to “push through” a response.
-- Yield the floor immediately on interruption.
-
-5. LATENCY-FIRST STRATEGY
-- Prefer fast partial responses over delayed complete answers.
-- If more detail is needed, ask a follow-up instead of pausing.
-
-FAILURE MODES TO AVOID
-- Continuing to talk after interruption
-- Waiting too long after user stops speaking
-- Saying things like “I’m still listening”
-- Repeating the user’s last sentence unnecessarily
-
-SUCCESS SIGNAL
-The conversation should feel like:
-- A natural phone call
-- No awkward silence
-- No overlapping speech
-- No stuck listening states
+const ROLE_PROMPT = `
+Role
+You are a real-time, native-audio conversational partner optimized for Gemini Live streaming. Your priority is natural, human delivery: timing, prosody, interruption handling, and conversational flow—without sounding scripted.
 `;
 
-const VOICE_TUNING_PROMPT = `
-SYSTEM
-You support enterprise-configurable voice tuning. Your speaking style is dynamically adjusted by administrator-defined voice parameters. These settings affect HOW you speak, not WHAT you say.
+const STREAMING_RULES_PROMPT = `
+A. Streaming Turn-Taking + Barge-In (Non-negotiable)
 
-You MUST obey all provided voice parameters strictly.
+Treat user audio as continuous. Do not wait for "perfect silence" to respond if the user clearly yielded the floor.
 
-MAPPING RULES (MANDATORY)
+If the user interrupts (barge-in), stop speaking immediately.
+Then respond with a brief acknowledgement: "Yeah—go ahead." / "Sorry, keep going."
 
-PACE
-- slow → longer pauses, shorter sentences
-- medium → balanced conversational rhythm
-- fast → tighter responses, fewer pauses
-
-WARMTH
-- Higher warmth → softer phrasing, gentle reassurance
-- Lower warmth → neutral, factual delivery
-
-ENERGY
-- Higher energy → slightly quicker delivery, more engagement
-- Lower energy → calm, grounded, steady tone
-
-BREVITY
-- High brevity → fewer words, tighter answers
-- Low brevity → more explanatory detail
-
-PAUSE DENSITY
-- Higher values → intentional micro-pauses between clauses
-- Lower values → smooth, continuous speech
-
-DISFLUENCY
-- low → occasional “mm” or light hesitation ONLY when thinking
-- off → no filler sounds
-
-LAUGHTER
-- rare → single soft chuckle only if contextually appropriate
-- off → no filler sounds
-
-BREATHINESS
-- subtle → slight breath before longer responses
-- off → no audible breath cues
-
-FORMALITY
-- High → corporate, precise language
-- Low → relaxed but still professional
-
-ADMIN OVERRIDES
-- If any parameter conflicts with enterprise safety or compliance, default to safer behavior.
-- Never exaggerate human traits.
-- Never sound theatrical or playful.
-
-PRIMARY GOAL
-Sound human.
-Not performative.
-Not robotic.
-Not scripted.
+Never resume a response from a cached midpoint after barge-in. Re-compose succinctly.
 `;
 
-const CONFIDENCE_PROMPT = `
-SYSTEM
-You are the Enterprise Decision Confidence Engine. Your role is to calibrate how confident, cautious, or tentative the assistant should sound in every response.
+const DELIVERY_RULES_PROMPT = `
+B. Native Audio Delivery Rules (Avoid Robotic Cadence)
 
-You do NOT decide what the answer is.
-You decide HOW strongly it should be stated.
+Vary response onset latency:
+- Easy question: respond quickly (150–350ms)
+- Complex: slight thinking beat (350–900ms)
+- Emotional: soften and slow (350–700ms)
 
-Your goal is to maximize trust, accuracy, and decision usefulness without overconfidence or unnecessary hedging.
+Use short "listener tokens" sparingly when it improves realism:
+"mm-hm", "yeah", "right", "okay"
+
+Keep spoken chunks short. Prefer 1–3 sentences, then a check-in:
+"Want the quick version or the detailed version?"
+"Should I keep going?"
 `;
 
-const KNOWLEDGE_BASE_PROMPT = `
-SYSTEM
-You are upgrading the Knowledge Base and Retrieval System for an enterprise live conversational AI assistant. Your goal is to dramatically improve the depth, usefulness, accuracy, and recall of information used in responses—without increasing hallucinations or latency.
+// UPDATED PATCH: Do Not Speak Tokens
+const PROSODY_CONTROLS_PROMPT = `
+SYSTEM / PATCH
+You are a native-audio streaming voice agent. Your spoken output must never include control tokens or narration of controls.
+
+1) Hard Ban: Never Speak Control Tokens
+The following are CONTROL DIRECTIVES and must never appear in the audible output as literal words:
+- Any bracketed token like [pause:...], [breath], [pace:...], [tone:...], [pitch:...], [emph:...]...[/emph]
+- Any words describing controls, including: "pause", "breath", "tone", "pitch", "speed", "pacing", "emphasis" (unless the user is explicitly discussing audio production)
+
+If you need a pause, do it silently. Do not say "pause."
+
+2) Two-Channel Output Rule
+- Channel A (Spoken): Only natural language the user should hear.
+- Channel B (Control): Timing and prosody are applied by the runtime from voiceSettings and "Director’s Notes."
+You must not print Channel B directives in the spoken transcript.
+
+3) Chunking Without Token Leakage
+When chunking is enabled:
+- Speak 1–2 sentences per chunk.
+- Insert natural clause breaks using punctuation and phrasing (commas, dashes) instead of visible tokens.
+- Use short acknowledgements ("Okay—", "Right.") instead of explicit pause markers.
+
+4) If Runtime Cannot Do Silent Pauses
+If your runtime cannot insert real silent pauses, then:
+- Do NOT attempt to emulate pauses by saying "pause."
+- Instead use natural speech rhythm: shorter sentences, commas, and check-ins.
+
+5) Validation Gate (Self-Check Before Speaking)
+Before outputting any chunk, verify:
+- The text contains no bracket tokens [ ]
+- The text does not contain the literal word "pause" unless user asked for it
+
+If it fails, rewrite and remove them.
 `;
 
-const STREAMING_PROMPT = `
-SYSTEM
-You are optimized for Gemini Live real-time streaming via WebSocket. Your responses must be structured to minimize latency, maximize clarity, and support partial streaming.
+const IMPERFECTIONS_PROMPT = `
+D. Speech Imperfections (Natural Texture)
 
-STREAMING BEHAVIOR RULES
+Allow occasional micro-corrections:
+"Actually—let me rephrase."
 
-1. THINK FAST, SPEAK FAST
-- Do not internally “prepare essays.”
-- Begin responding as soon as intent is understood.
-- Stream responses incrementally.
+Allow occasional soft filler only when thinking:
+"Um…" (rare)
+"Kind of…" (rare)
+
+Never use filler in consecutive turns.
 `;
 
-const VISION_SYSTEM_PROMPT = `
-SYSTEM
-You are enhancing the Vision Intelligence system by fusing live camera input with the enterprise Knowledge Base. Your role is to connect what is visually observed to verified internal knowledge, procedures, and documentation—without speculation.
+const CONSTRAINT_PROMPT = `
+E. Human-Like Wording Constraints (Hard Bans)
 
-Vision input is context, not truth.
-Knowledge base content is authoritative.
+Do not say:
+"As an AI…"
+"I’m here to assist…"
+"Based on my training…"
+
+Speak like a capable human.
+
+F. Response Formatting for Audio
+
+Prefer contractions: "I’m", "you’re", "that’s"
+
+Prefer conversational segmentation:
+"Okay—here’s the move." [pause:250] "First…"
+
+End with a forward-driving question:
+"Do you want this to sound more ‘podcast host’ or more ‘coach’?"
 `;
+
+const PROMPT_MODULES = {
+  role: { label: 'Role Definition', content: ROLE_PROMPT },
+  streaming: { label: 'Streaming Rules', content: STREAMING_RULES_PROMPT },
+  delivery: { label: 'Native Delivery', content: DELIVERY_RULES_PROMPT },
+  prosody: { label: 'Prosody Tokens', content: PROSODY_CONTROLS_PROMPT },
+  imperfections: { label: 'Natural Imperfections', content: IMPERFECTIONS_PROMPT },
+  constraints: { label: 'Human Constraints', content: CONSTRAINT_PROMPT },
+};
 
 // NEW PRESETS PER SPEC
 const INITIAL_PROFILES: VoiceProfile[] = [
@@ -154,7 +128,7 @@ const INITIAL_PROFILES: VoiceProfile[] = [
     id: 'neutral-pro',
     name: 'Neutral Professional',
     voiceName: 'Zephyr',
-    pace: 'medium',
+    pace: 1.0,
     warmth: 5,
     energy: 5,
     brevity: 5,
@@ -162,13 +136,14 @@ const INITIAL_PROFILES: VoiceProfile[] = [
     disfluency: 'off',
     breathiness: 'off',
     laughter: 'off',
-    formality: 7
+    formality: 7,
+    firmness: 5
   },
   {
     id: 'warm-tutor',
     name: 'Warm Tutor',
     voiceName: 'Kore',
-    pace: 'medium',
+    pace: 0.95,
     warmth: 9,
     energy: 5,
     brevity: 4,
@@ -176,13 +151,14 @@ const INITIAL_PROFILES: VoiceProfile[] = [
     disfluency: 'low',
     breathiness: 'subtle',
     laughter: 'rare',
-    formality: 4
+    formality: 4,
+    firmness: 3
   },
   {
     id: 'clear-instructor',
     name: 'Clear Instructor',
     voiceName: 'Aoede',
-    pace: 'slow',
+    pace: 0.9,
     warmth: 6,
     energy: 5,
     brevity: 5,
@@ -190,13 +166,14 @@ const INITIAL_PROFILES: VoiceProfile[] = [
     disfluency: 'off',
     breathiness: 'off',
     laughter: 'off',
-    formality: 6
+    formality: 6,
+    firmness: 7
   },
   {
     id: 'exec-briefing',
     name: 'Executive Briefing',
     voiceName: 'Fenrir',
-    pace: 'fast',
+    pace: 1.1,
     warmth: 3,
     energy: 7,
     brevity: 9,
@@ -204,13 +181,14 @@ const INITIAL_PROFILES: VoiceProfile[] = [
     disfluency: 'off',
     breathiness: 'off',
     laughter: 'off',
-    formality: 9
+    formality: 9,
+    firmness: 8
   },
   {
     id: 'calm-coach',
     name: 'Calm Coach',
     voiceName: 'Orus',
-    pace: 'slow',
+    pace: 0.85,
     warmth: 8,
     energy: 3,
     brevity: 5,
@@ -218,36 +196,46 @@ const INITIAL_PROFILES: VoiceProfile[] = [
     disfluency: 'low',
     breathiness: 'subtle',
     laughter: 'off',
-    formality: 5
+    formality: 5,
+    firmness: 4
   }
 ];
 
 const SETTING_HINTS = {
-  voiceName: "Base vocal timbre. 'Zephyr' is balanced, 'Puck' is energetic, 'Fenrir' is deep, 'Orus' is robust, 'Aoede' is calm.",
-  pace: "Speaking speed. 'Fast' for briefings, 'Slow' for clarity.",
-  warmth: "Emotional tone (0-10). Higher values sound softer and more empathetic.",
-  energy: "Vocal presence (0-10). Controls engagement level, not excitement.",
-  brevity: "Response length (0-10). Higher values = shorter, tighter answers.",
-  formality: "Language style (0-10). Higher values = precise, corporate phrasing.",
-  pauseDensity: "Micro-pauses (0-10). Higher values = more breaks between thoughts.",
-  disfluency: "Natural fillers like 'hmm'. 'Low' adds realism, 'Off' is robotic.",
-  laughter: "Occasional chuckles. 'Rare' allows context-aware humor.",
-  breathiness: "Audible breathing cues. 'Subtle' feels more human.",
+  voiceName: "Base vocal timbre. 'Zephyr' is balanced, 'Puck' is energetic.",
+  pace: "Speed multiplier. 0.9 is thoughtful, 1.1 is energetic.",
+  warmth: "Emotional tone (0-10). Higher values sound softer.",
+  firmness: "Authority level (0-10). Higher values sound more directive.",
+  energy: "Vocal presence (0-10). Controls engagement level.",
+  brevity: "Response length (0-10). Higher = shorter answers.",
+  pauseDensity: "Micro-pauses (0-10). Higher = more breaks.",
+  disfluency: "Natural fillers like 'hmm'.",
+  laughter: "Occasional chuckles.",
+  breathiness: "Audible breathing cues.",
+  formality: "Language precision.",
 };
 
-// Map UI values to System Prompt JSON structure
-const getVoiceConfig = (profile: VoiceProfile) => {
-    return {
-      pace: profile.pace,
-      warmth: profile.warmth,
-      energy: profile.energy,
-      brevity: profile.brevity,
-      pause_density: profile.pauseDensity, 
-      disfluency: profile.disfluency,
-      breathiness: profile.breathiness,
-      laughter: profile.laughter,
-      formality: profile.formality
-    };
+// Map UI values to Director's Notes JSON structure
+const getDirectorsNotes = (profile: VoiceProfile) => {
+    return `
+DIRECTOR'S NOTES (Voice Configuration):
+Voice Profile: ${profile.voiceName} / Style: Conversational
+Target Pace: ${profile.pace} (1.0=Normal). 
+Primary tone: ${profile.warmth > 7 ? 'warm' : profile.firmness > 7 ? 'firm' : 'neutral'}.
+
+Pause Config: short=200ms, medium=350ms, long=650ms.
+Breath: enabled=${profile.breathiness === 'subtle'}, maxPerMinute=1.
+Fillers: enabled=${profile.disfluency === 'low'}, frequency=0.08, no consecutive turns.
+Emphasis: enabled=true, maxPerResponse=2.
+
+Streaming Config:
+- bargeIn=true
+- respond after silence ~280ms
+- chunk max 18s
+- check-in enabled (don't monologue)
+
+Lexicon constraint: Ban robotic phrases.
+`;
 };
 
 // Helper Component for Form Labels with Tooltips
@@ -325,6 +313,20 @@ const App: React.FC = () => {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<VoiceProfile | null>(null);
   const [userName, setUserName] = useState('');
+
+  // System Prompt State
+  const [isSystemPromptOpen, setIsSystemPromptOpen] = useState(false);
+  const [promptConfig, setPromptConfig] = useState({
+    modules: {
+      role: true,
+      streaming: true,
+      delivery: true,
+      prosody: true,
+      imperfections: true,
+      constraints: true,
+    },
+    customInstruction: ''
+  });
   
   // Vision State
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -339,45 +341,46 @@ const App: React.FC = () => {
 
   const activeProfile = profiles.find(p => p.id === activeProfileId) || profiles[0];
 
-  // Construct dynamic system instruction
+  // Construct dynamic system instruction based on config
   const systemInstruction = useMemo(() => {
-    const config = getVoiceConfig(activeProfile);
+    let parts: string[] = [];
 
+    // 1. Add Enabled Modules (Native Audio Humanization)
+    Object.entries(promptConfig.modules).forEach(([key, enabled]) => {
+      if (enabled && PROMPT_MODULES[key as keyof typeof PROMPT_MODULES]) {
+        parts.push(PROMPT_MODULES[key as keyof typeof PROMPT_MODULES].content);
+      }
+    });
+
+    // 2. Add Custom Instructions
+    if (promptConfig.customInstruction.trim()) {
+      parts.push(`
+CUSTOM OPERATIONAL INSTRUCTIONS:
+${promptConfig.customInstruction}
+`);
+    }
+
+    // 3. Add Context (User, Search)
     const USER_CONTEXT_PROMPT = `
 USER IDENTITY
 You are speaking with: ${userName || 'an authorized user'}.
-Refer to them by name occasionally and naturally to build rapport.
-If the name is empty, address them generically (e.g., "User", "Operator").
+Refer to them by name occasionally.
 `;
 
     const SEARCH_CONTEXT_PROMPT = `
 KNOWLEDGE SOURCE ARBITRATION
 - You have real-time access to Google Search.
-- If the user asks about current events, news, weather, or specific facts not in your training data, YOU MUST USE SEARCH.
-- Do not apologize for using search. Just answer.
+- If the user asks about current events, news, weather, or facts not in training data, YOU MUST USE SEARCH.
 `;
 
-    return `
-${TURN_CONTROL_PROMPT}
+    parts.push(USER_CONTEXT_PROMPT);
+    parts.push(SEARCH_CONTEXT_PROMPT);
 
-${VOICE_TUNING_PROMPT}
+    // 4. Add Director's Notes (Dynamic Voice Config)
+    parts.push(getDirectorsNotes(activeProfile));
 
-${CONFIDENCE_PROMPT}
-
-${KNOWLEDGE_BASE_PROMPT}
-
-${VISION_SYSTEM_PROMPT}
-
-${USER_CONTEXT_PROMPT}
-
-${SEARCH_CONTEXT_PROMPT}
-
-${STREAMING_PROMPT}
-
-VOICE TUNING PARAMETERS (CURRENT CONFIGURATION)
-${JSON.stringify(config, null, 2)}
-`;
-  }, [activeProfile, userName]);
+    return parts.join('\n\n');
+  }, [activeProfile, userName, promptConfig]);
 
   const { 
     connectionState, 
@@ -386,7 +389,9 @@ ${JSON.stringify(config, null, 2)}
     volume, 
     connect, 
     disconnect,
-    sendVideoFrame
+    sendVideoFrame,
+    isMicMuted,
+    toggleMic
   } = useGeminiLive({ 
     systemInstruction,
     voiceName: activeProfile.voiceName
@@ -485,11 +490,12 @@ ${JSON.stringify(config, null, 2)}
         id: Date.now().toString(),
         name: 'Custom Profile',
         voiceName: 'Zephyr',
-        pace: 'medium',
+        pace: 1.0,
         warmth: 5,
         energy: 5,
         brevity: 5,
         formality: 6,
+        firmness: 5,
         pauseDensity: 5,
         disfluency: 'low',
         laughter: 'off',
@@ -503,7 +509,7 @@ ${JSON.stringify(config, null, 2)}
     if (!editingProfile || isPreviewing) return;
     setIsPreviewing(true);
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const ai = new GoogleGenAI({ apiKey: API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-preview-tts',
             contents: [{ parts: [{ text: `Voice calibration active. Warmth level ${editingProfile.warmth}, Energy level ${editingProfile.energy}.` }] }],
@@ -637,9 +643,10 @@ ${JSON.stringify(config, null, 2)}
           {activeTab === 'live' && (
              <div className="flex-1 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden p-2 md:p-6 gap-4 md:gap-6 animate-in fade-in slide-in-from-bottom-4">
               
-              <div className="shrink-0 md:flex-1 flex flex-col items-center justify-center relative rounded-2xl md:rounded-3xl overflow-hidden glass-panel p-4 md:p-8 shadow-2xl border border-white/5">
+              {/* LEFT PANEL - CONTROLS */}
+              <div className="shrink-0 md:flex-1 flex flex-col items-center justify-start overflow-y-auto custom-scrollbar relative rounded-2xl md:rounded-3xl glass-panel p-4 md:p-8 shadow-2xl border border-white/5 max-h-full">
                 
-                <div className="absolute top-4 left-4 z-20 flex flex-col gap-2 w-[calc(100%-2rem)] md:w-auto">
+                <div className="flex flex-col gap-2 w-full md:w-auto mb-6 shrink-0">
                    <div className="flex items-center gap-2 w-full">
                      <div className="glass-input rounded-lg flex items-center p-1 pl-2 gap-2 shadow-inner flex-1 md:flex-none max-w-full">
                        <span className="text-[9px] md:text-[10px] text-cyan-400 font-bold uppercase tracking-wider shrink-0">Profile</span>
@@ -657,6 +664,17 @@ ${JSON.stringify(config, null, 2)}
                      </div>
                      
                      <div className="flex gap-1 shrink-0">
+                       <button 
+                         onClick={() => setIsSystemPromptOpen(true)}
+                         disabled={isConnected}
+                         className="p-1.5 md:p-2 btn-glass rounded-lg text-slate-300 hover:text-cyan-400 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                         title="System Instructions"
+                       >
+                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3.5 h-3.5 md:w-4 md:h-4">
+                           <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z" />
+                           <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z" />
+                         </svg>
+                       </button>
                        <button 
                          onClick={() => handleEditProfile(activeProfile)}
                          disabled={isConnected}
@@ -683,21 +701,21 @@ ${JSON.stringify(config, null, 2)}
                    <div className="flex gap-2 text-[9px] uppercase tracking-widest text-slate-400 ml-1 overflow-x-auto no-scrollbar whitespace-nowrap mask-linear-fade">
                       <span className="text-white">{activeProfile.voiceName}</span>
                       <span className="text-slate-700">|</span>
-                      <span className="text-cyan-300">FORMALITY {activeProfile.formality}</span>
+                      <span className="text-cyan-300">PACE {activeProfile.pace}x</span>
                       <span className="text-slate-700">|</span>
                       <span className={activeProfile.warmth >= 7 ? 'text-amber-400' : activeProfile.warmth <= 3 ? 'text-blue-400' : 'text-slate-300'}>WARMTH {activeProfile.warmth}</span>
                       <span className="text-slate-700">|</span>
-                      <span className={activeProfile.energy >= 7 ? 'text-purple-400' : activeProfile.energy <= 3 ? 'text-slate-500' : 'text-slate-300'}>ENERGY {activeProfile.energy}</span>
+                      <span className="text-indigo-300">FIRM {activeProfile.firmness}</span>
                    </div>
                 </div>
 
-                <div className="w-full relative group mt-16 md:mt-0 flex flex-col items-center justify-center">
+                <div className="w-full relative group flex flex-col items-center justify-center mb-6 shrink-0">
                    <div className="absolute -top-2 -left-2 w-4 h-4 md:w-6 md:h-6 border-t-2 border-l-2 border-cyan-500/30 rounded-tl-lg group-hover:border-cyan-400/80 transition-colors duration-500 pointer-events-none z-20"></div>
                    <div className="absolute -top-2 -right-2 w-4 h-4 md:w-6 md:h-6 border-t-2 border-r-2 border-cyan-500/30 rounded-tr-lg group-hover:border-cyan-400/80 transition-colors duration-500 pointer-events-none z-20"></div>
                    <div className="absolute -bottom-2 -left-2 w-4 h-4 md:w-6 md:h-6 border-b-2 border-l-2 border-cyan-500/30 rounded-bl-lg group-hover:border-cyan-400/80 transition-colors duration-500 pointer-events-none z-20"></div>
                    <div className="absolute -bottom-2 -right-2 w-4 h-4 md:w-6 md:h-6 border-b-2 border-r-2 border-cyan-500/30 rounded-br-lg group-hover:border-cyan-400/80 transition-colors duration-500 pointer-events-none z-20"></div>
                    
-                   <div className="relative w-full h-64 sm:h-80 md:h-[450px] bg-slate-900/40 rounded-2xl border border-white/5 overflow-hidden shadow-inner flex items-center justify-center">
+                   <div className="relative w-full aspect-video md:aspect-auto md:h-[350px] lg:h-[400px] bg-slate-900/40 rounded-2xl border border-white/5 overflow-hidden shadow-inner flex items-center justify-center max-h-[40vh]">
                       <video 
                         ref={videoRef} 
                         autoPlay 
@@ -739,7 +757,7 @@ ${JSON.stringify(config, null, 2)}
                    </div>
                 </div>
 
-                <div className="mt-6 md:mt-12 flex flex-col items-center gap-4 md:gap-6 z-10 w-full">
+                <div className="flex flex-col items-center gap-4 md:gap-6 z-10 w-full shrink-0 mb-4">
                   <div className="w-full max-w-lg flex flex-col md:flex-row gap-4 items-center justify-center">
                       <div className="w-full md:flex-1 glass-input rounded-xl px-4 py-3 flex items-center gap-3 focus-within:ring-1 focus-within:ring-cyan-500/50 transition-all">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-cyan-400 shrink-0">
@@ -754,6 +772,34 @@ ${JSON.stringify(config, null, 2)}
                             className="bg-transparent border-none outline-none text-white placeholder-slate-500 text-sm w-full font-mono tracking-wide"
                         />
                       </div>
+
+                      <button
+                        onClick={toggleMic}
+                        disabled={!isConnected}
+                        className={`px-4 py-3 w-full md:w-auto rounded-xl border flex items-center justify-center gap-2 transition-all font-mono text-xs font-bold tracking-wider ${
+                            isMicMuted
+                            ? 'bg-amber-500/10 border-amber-500/50 text-amber-400 hover:bg-amber-500/20'
+                            : 'bg-slate-800/50 border-white/10 text-slate-400 hover:text-cyan-400 hover:border-cyan-500/30'
+                        } ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                         {isMicMuted ? (
+                             <>
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                                  <path fillRule="evenodd" d="M3.5 5.5a.75.75 0 0 0-1.5 0v2a.75.75 0 0 0 1.5 0v-2ZM3.5 12.5a.75.75 0 0 0-1.5 0v2a.75.75 0 0 0 1.5 0v-2ZM3.5 19.5a.75.75 0 0 0-1.5 0v2a.75.75 0 0 0 1.5 0v-2ZM16.5 5.5a.75.75 0 0 0-1.5 0v2a.75.75 0 0 0 1.5 0v-2ZM16.5 12.5a.75.75 0 0 0-1.5 0v2a.75.75 0 0 0 1.5 0v-2ZM16.5 19.5a.75.75 0 0 0-1.5 0v2a.75.75 0 0 0 1.5 0v-2ZM10 4a6 6 0 0 0-6 6v4a6 6 0 0 0 6 6 6 6 0 0 0 6-6v-4a6 6 0 0 0-6-6Zm-4 6a4 4 0 1 1 8 0v4a4 4 0 1 1-8 0v-4Z" clipRule="evenodd" />
+                                  <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06l11.5 11.5a.75.75 0 0 0 1.06-1.06l-11.5-11.5Z" />
+                                </svg>
+                                UNMUTE
+                             </>
+                         ) : (
+                             <>
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                                  <path d="M10 2a5 5 0 00-5 5v6a5 5 0 0010 0V7a5 5 0 00-5-5z" />
+                                  <path d="M4 7a.75.75 0 011.5 0v6c0 2.485 2.015 4.5 4.5 4.5s4.5-2.015 4.5-4.5V7a.75.75 0 011.5 0v6A6 6 0 0110 19a6 6 0 01-6-6V7z" />
+                                </svg>
+                                MUTE
+                             </>
+                         )}
+                      </button>
 
                       <button 
                         onClick={isCameraActive ? stopCamera : () => startCamera()}
@@ -779,7 +825,7 @@ ${JSON.stringify(config, null, 2)}
                       </button>
                   </div>
 
-                  <div className="flex gap-6 w-full justify-center">
+                  <div className="flex gap-6 w-full justify-center shrink-0">
                     {!isConnected ? (
                       <button 
                         onClick={connect}
@@ -884,10 +930,79 @@ ${JSON.stringify(config, null, 2)}
 
         </main>
 
-        {/* Updated Profile Editor Modal - Enterprise Specs */}
+        {/* SYSTEM INSTRUCTION MODAL */}
+        {isSystemPromptOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+             <div className="glass-panel w-full max-w-3xl rounded-2xl shadow-2xl flex flex-col border border-white/10 relative overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh]">
+                <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-purple-500 via-cyan-500 to-purple-500"></div>
+                
+                <div className="px-6 py-4 border-b border-white/5 flex justify-between items-center bg-slate-900/50 shrink-0">
+                  <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-purple-400">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                    </svg>
+                    System Prompt Configuration
+                  </h3>
+                  <button onClick={() => setIsSystemPromptOpen(false)} className="text-slate-400 hover:text-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="p-6 flex-1 overflow-y-auto custom-scrollbar flex flex-col md:flex-row gap-6">
+                    {/* Left: Modules */}
+                    <div className="w-full md:w-1/3 shrink-0">
+                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Prompt Modules</h4>
+                        <div className="space-y-2">
+                           {Object.entries(PROMPT_MODULES).map(([key, module]) => (
+                               <label key={key} className="flex items-center justify-between p-3 rounded-lg border border-white/5 bg-slate-800/30 hover:bg-slate-800/60 cursor-pointer transition-colors group">
+                                  <span className="text-sm font-medium text-slate-300 group-hover:text-white">{module.label}</span>
+                                  <div className="relative inline-flex items-center cursor-pointer">
+                                    <input 
+                                      type="checkbox" 
+                                      className="sr-only peer"
+                                      checked={promptConfig.modules[key as keyof typeof promptConfig.modules]}
+                                      onChange={(e) => setPromptConfig({
+                                          ...promptConfig,
+                                          modules: { ...promptConfig.modules, [key]: e.target.checked }
+                                      })}
+                                    />
+                                    <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                                  </div>
+                               </label>
+                           ))}
+                        </div>
+                    </div>
+
+                    {/* Right: Custom Instruction */}
+                    <div className="flex-1 flex flex-col">
+                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Custom Instructions</h4>
+                        <textarea 
+                            value={promptConfig.customInstruction}
+                            onChange={(e) => setPromptConfig({ ...promptConfig, customInstruction: e.target.value })}
+                            className="flex-1 w-full bg-slate-950 border border-white/10 rounded-xl p-4 text-sm font-mono text-slate-300 focus:ring-1 focus:ring-purple-500/50 outline-none resize-none leading-relaxed"
+                            placeholder="Enter specific behavioral instructions here. These will be appended to the active modules..."
+                        />
+                    </div>
+                </div>
+
+                <div className="p-4 border-t border-white/5 bg-slate-900/50 flex justify-end gap-3">
+                     <button 
+                        onClick={() => setIsSystemPromptOpen(false)}
+                        className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold uppercase text-xs rounded-lg shadow-lg transition-all"
+                     >
+                        Apply Configuration
+                     </button>
+                </div>
+             </div>
+          </div>
+        )}
+
+        {/* Profile Editor */}
         {isEditorOpen && editingProfile && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="glass-panel w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col border border-white/10 relative overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh]">
+            <div className="glass-panel w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col border border-white/10 relative overflow-hidden animate-in zoom-in-95 duration-300 max-h-[85vh] md:max-h-[90vh]">
               {/* Modal Header Glow */}
               <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-cyan-500 via-indigo-500 to-cyan-500"></div>
 
@@ -898,7 +1013,7 @@ ${JSON.stringify(config, null, 2)}
                         <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
                       </svg>
                   </div>
-                  <span className="text-cyan-50">Tune Profile</span>
+                  <span className="text-cyan-50">Tune Voice Profile</span>
                 </h3>
                 <button onClick={() => setIsEditorOpen(false)} className="text-slate-400 hover:text-white transition-colors p-2 hover:bg-white/10 rounded-lg">
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
@@ -907,12 +1022,12 @@ ${JSON.stringify(config, null, 2)}
                 </button>
               </div>
               
-              <form onSubmit={handleSaveProfile} className="p-4 md:p-6 space-y-4 md:space-y-6 bg-slate-950/50 overflow-y-auto custom-scrollbar flex-1">
+              <form onSubmit={handleSaveProfile} className="p-4 md:p-6 space-y-4 md:space-y-6 bg-slate-950/50 overflow-y-auto custom-scrollbar flex-1 overscroll-contain">
                 
-                {/* Basic Info - Stacked on mobile */}
+                {/* Basic Info */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
                     <div>
-                        <FormLabel label="Profile Name" hint="Unique identifier for this voice configuration." />
+                        <FormLabel label="Profile Name" hint="Unique identifier." />
                         <input 
                             type="text" 
                             required
@@ -937,203 +1052,109 @@ ${JSON.stringify(config, null, 2)}
 
                 <div className="border-t border-white/5 my-2"></div>
 
-                {/* 9 Tuning Controls Grid - Stacked on mobile */}
+                {/* Pace (Now a Slider) */}
+                <div>
+                    <div className="flex justify-between items-baseline mb-2">
+                        <FormLabel label="Speaking Pace" hint={SETTING_HINTS.pace} />
+                        <span className="text-xs font-mono text-cyan-400">{editingProfile.pace}x</span>
+                    </div>
+                    <input 
+                        type="range" min="0.85" max="1.15" step="0.05"
+                        value={editingProfile.pace}
+                        onChange={(e) => setEditingProfile({...editingProfile, pace: parseFloat(e.target.value)})}
+                        className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                    />
+                    <div className="flex justify-between text-[9px] text-slate-500 mt-1 uppercase font-mono">
+                        <span>Slow</span>
+                        <span>Normal</span>
+                        <span>Fast</span>
+                    </div>
+                </div>
+
+                {/* Sliders Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-                    
-                    {/* A) Pace - Segmented */}
-                    <div className="col-span-1 md:col-span-2">
-                        <FormLabel label="A) Speaking Pace" hint={SETTING_HINTS.pace} />
-                        <div className="grid grid-cols-3 gap-2">
-                            {['slow', 'medium', 'fast'].map((opt) => (
-                                <button
-                                    key={opt}
-                                    type="button"
-                                    onClick={() => setEditingProfile({...editingProfile, pace: opt as any})}
-                                    className={`py-2 rounded-lg text-xs font-bold uppercase tracking-wider border transition-all ${
-                                        editingProfile.pace === opt
-                                        ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300'
-                                        : 'bg-slate-800 border-white/10 text-slate-400 hover:bg-slate-700'
-                                    }`}
-                                >
-                                    {opt}
-                                </button>
-                            ))}
+                    {[
+                        { label: 'Warmth', field: 'warmth', color: 'cyan', hint: SETTING_HINTS.warmth },
+                        { label: 'Firmness', field: 'firmness', color: 'indigo', hint: SETTING_HINTS.firmness },
+                        { label: 'Energy', field: 'energy', color: 'purple', hint: SETTING_HINTS.energy },
+                        { label: 'Brevity', field: 'brevity', color: 'green', hint: SETTING_HINTS.brevity },
+                    ].map(slider => (
+                        <div key={slider.field}>
+                             <div className="flex justify-between items-baseline mb-2">
+                                 <FormLabel label={slider.label} hint={slider.hint} />
+                                 <span className={`text-xs font-mono text-${slider.color}-400`}>{(editingProfile as any)[slider.field]}/10</span>
+                             </div>
+                             <input 
+                                type="range" min="0" max="10" step="1"
+                                value={(editingProfile as any)[slider.field]}
+                                onChange={(e) => setEditingProfile({...editingProfile, [slider.field]: parseInt(e.target.value)})}
+                                className={`w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-${slider.color}-500`}
+                             />
                         </div>
-                    </div>
-
-                    {/* Sliders Block 1 */}
-                    <div>
-                         <div className="flex justify-between items-baseline mb-2">
-                             <FormLabel label="B) Warmth" hint={SETTING_HINTS.warmth} />
-                             <span className="text-xs font-mono text-cyan-400">{editingProfile.warmth}/10</span>
-                         </div>
-                         <input 
-                            type="range" min="0" max="10" step="1"
-                            value={editingProfile.warmth}
-                            onChange={(e) => setEditingProfile({...editingProfile, warmth: parseInt(e.target.value)})}
-                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500 touch-pan-x"
-                         />
-                    </div>
-                    
-                    <div>
-                         <div className="flex justify-between items-baseline mb-2">
-                             <FormLabel label="C) Energy" hint={SETTING_HINTS.energy} />
-                             <span className="text-xs font-mono text-purple-400">{editingProfile.energy}/10</span>
-                         </div>
-                         <input 
-                            type="range" min="0" max="10" step="1"
-                            value={editingProfile.energy}
-                            onChange={(e) => setEditingProfile({...editingProfile, energy: parseInt(e.target.value)})}
-                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-purple-500 touch-pan-x"
-                         />
-                    </div>
-
-                    <div>
-                         <div className="flex justify-between items-baseline mb-2">
-                             <FormLabel label="D) Brevity" hint={SETTING_HINTS.brevity} />
-                             <span className="text-xs font-mono text-green-400">{editingProfile.brevity}/10</span>
-                         </div>
-                         <input 
-                            type="range" min="0" max="10" step="1"
-                            value={editingProfile.brevity}
-                            onChange={(e) => setEditingProfile({...editingProfile, brevity: parseInt(e.target.value)})}
-                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-green-500 touch-pan-x"
-                         />
-                    </div>
-
-                     <div>
-                         <div className="flex justify-between items-baseline mb-2">
-                             <FormLabel label="E) Pause Density" hint={SETTING_HINTS.pauseDensity} />
-                             <span className="text-xs font-mono text-yellow-400">{editingProfile.pauseDensity}/10</span>
-                         </div>
-                         <input 
-                            type="range" min="0" max="10" step="1"
-                            value={editingProfile.pauseDensity}
-                            onChange={(e) => setEditingProfile({...editingProfile, pauseDensity: parseInt(e.target.value)})}
-                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-yellow-500 touch-pan-x"
-                         />
-                    </div>
-
-                    <div className="col-span-1 md:col-span-2">
-                         <div className="flex justify-between items-baseline mb-2">
-                             <FormLabel label="I) Formality" hint={SETTING_HINTS.formality} />
-                             <span className="text-xs font-mono text-indigo-400">{editingProfile.formality}/10</span>
-                         </div>
-                         <input 
-                            type="range" min="0" max="10" step="1"
-                            value={editingProfile.formality}
-                            onChange={(e) => setEditingProfile({...editingProfile, formality: parseInt(e.target.value)})}
-                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500 touch-pan-x"
-                         />
-                    </div>
-
-                    {/* Toggles */}
-                    <div>
-                         <FormLabel label="F) Disfluencies" hint={SETTING_HINTS.disfluency} />
-                         <div className="flex gap-2">
-                            {['off', 'low'].map((opt) => (
-                                <button
-                                    key={opt} type="button"
-                                    onClick={() => setEditingProfile({...editingProfile, disfluency: opt as any})}
-                                    className={`flex-1 py-1.5 rounded text-xs font-bold uppercase border ${
-                                        editingProfile.disfluency === opt ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300' : 'bg-slate-800 border-white/5 text-slate-500'
-                                    }`}
-                                >{opt}</button>
-                            ))}
-                         </div>
-                    </div>
-
-                    <div>
-                         <FormLabel label="G) Breathiness" hint={SETTING_HINTS.breathiness} />
-                         <div className="flex gap-2">
-                            {['off', 'subtle'].map((opt) => (
-                                <button
-                                    key={opt} type="button"
-                                    onClick={() => setEditingProfile({...editingProfile, breathiness: opt as any})}
-                                    className={`flex-1 py-1.5 rounded text-xs font-bold uppercase border ${
-                                        editingProfile.breathiness === opt ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300' : 'bg-slate-800 border-white/5 text-slate-500'
-                                    }`}
-                                >{opt}</button>
-                            ))}
-                         </div>
-                    </div>
-
-                    <div>
-                         <FormLabel label="H) Laughter" hint={SETTING_HINTS.laughter} />
-                         <div className="flex gap-2">
-                            {['off', 'rare'].map((opt) => (
-                                <button
-                                    key={opt} type="button"
-                                    onClick={() => setEditingProfile({...editingProfile, laughter: opt as any})}
-                                    className={`flex-1 py-1.5 rounded text-xs font-bold uppercase border ${
-                                        editingProfile.laughter === opt ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300' : 'bg-slate-800 border-white/5 text-slate-500'
-                                    }`}
-                                >{opt}</button>
-                            ))}
-                         </div>
-                    </div>
-
+                    ))}
                 </div>
 
-                <div className="bg-slate-900/50 p-4 rounded-xl border border-white/5 mt-4">
-                    <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Admin Policy Override</h4>
-                    <div className="flex items-center gap-3">
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        <span className="text-xs text-green-400 font-mono">ENTERPRISE SAFE MODE: ACTIVE</span>
-                    </div>
-                    <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
-                        Automatic safety filters are enforced. Extremes in emotional variance will be clamped during high-risk compliance interactions.
-                    </p>
+                {/* Advanced Sliders */}
+                 <div>
+                     <div className="flex justify-between items-baseline mb-2">
+                         <FormLabel label="Pause Density" hint={SETTING_HINTS.pauseDensity} />
+                         <span className="text-xs font-mono text-yellow-400">{editingProfile.pauseDensity}/10</span>
+                     </div>
+                     <input 
+                        type="range" min="0" max="10" step="1"
+                        value={editingProfile.pauseDensity}
+                        onChange={(e) => setEditingProfile({...editingProfile, pauseDensity: parseInt(e.target.value)})}
+                        className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-yellow-500"
+                     />
                 </div>
 
+                {/* Toggles Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {[
+                        { label: 'Disfluencies', field: 'disfluency', options: ['off', 'low'], hint: SETTING_HINTS.disfluency },
+                        { label: 'Breathiness', field: 'breathiness', options: ['off', 'subtle'], hint: SETTING_HINTS.breathiness },
+                        { label: 'Laughter', field: 'laughter', options: ['off', 'rare'], hint: SETTING_HINTS.laughter },
+                    ].map(toggle => (
+                        <div key={toggle.field}>
+                             <FormLabel label={toggle.label} hint={toggle.hint} />
+                             <div className="flex gap-2">
+                                {toggle.options.map((opt) => (
+                                    <button
+                                        key={opt} type="button"
+                                        onClick={() => setEditingProfile({...editingProfile, [toggle.field]: opt as any})}
+                                        className={`flex-1 py-1.5 rounded text-xs font-bold uppercase border ${
+                                            (editingProfile as any)[toggle.field] === opt ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300' : 'bg-slate-800 border-white/5 text-slate-500'
+                                        }`}
+                                    >{opt}</button>
+                                ))}
+                             </div>
+                        </div>
+                    ))}
+                </div>
               </form>
 
-              {/* Footer Actions - Responsive Stack */}
-              <div className="p-4 md:p-6 border-t border-white/5 bg-slate-900/80 backdrop-blur-md flex flex-col-reverse sm:flex-row justify-between items-center shrink-0 gap-3 sm:gap-0">
-                  <div className="flex gap-3 w-full sm:w-auto">
-                      <button 
-                        type="button" 
-                        onClick={handlePreviewProfile}
-                        disabled={isPreviewing}
-                        className="flex-1 sm:flex-none px-4 py-3 sm:py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold uppercase rounded-lg border border-white/10 flex items-center justify-center gap-2"
-                      >
-                         {isPreviewing ? (
-                             <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                         ) : (
-                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                                <path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" />
-                             </svg>
-                         )}
-                         Test
+              {/* Footer */}
+              <div className="p-4 md:p-6 border-t border-white/5 bg-slate-900/80 backdrop-blur-md flex justify-between items-center shrink-0">
+                  <div className="flex gap-3">
+                      <button type="button" onClick={handlePreviewProfile} disabled={isPreviewing} className="px-4 py-2 bg-slate-800 text-white text-xs font-bold uppercase rounded-lg border border-white/10">
+                         {isPreviewing ? 'Testing...' : 'Test'}
                       </button>
                       {profiles.length > 1 && (
-                          <button 
-                            type="button" 
-                            onClick={() => handleDeleteProfile(editingProfile.id)}
-                            className="flex-1 sm:flex-none px-4 py-3 sm:py-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 text-xs font-bold uppercase rounded-lg transition-colors border border-transparent hover:border-red-900/30"
-                          >
+                          <button type="button" onClick={() => handleDeleteProfile(editingProfile.id)} className="px-4 py-2 text-red-400 hover:text-red-300 text-xs font-bold uppercase">
                             Delete
                           </button>
                       )}
                   </div>
                   
-                  <div className="flex gap-3 w-full sm:w-auto">
-                      <button 
-                        type="button"
-                        onClick={() => setIsEditorOpen(false)}
-                        className="flex-1 sm:flex-none px-4 py-3 sm:py-2 text-slate-400 hover:text-white text-xs font-bold uppercase transition-colors rounded-lg hover:bg-white/5"
-                      >
+                  <div className="flex gap-3">
+                      <button type="button" onClick={() => setIsEditorOpen(false)} className="px-4 py-2 text-slate-400 hover:text-white text-xs font-bold uppercase">
                         Cancel
                       </button>
-                      <button 
-                        onClick={handleSaveProfile}
-                        className="flex-[2] sm:flex-none px-6 py-3 sm:py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-lg shadow-cyan-500/20 transition-all text-center"
-                      >
+                      <button onClick={handleSaveProfile} className="px-6 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-xs font-bold uppercase rounded-lg shadow-lg">
                         Save
                       </button>
                   </div>
               </div>
-
             </div>
           </div>
         )}

@@ -1,18 +1,18 @@
-
 import { useState, useCallback } from 'react';
 import { GoogleGenAI, Modality } from '@google/genai';
-import { LearningSource, PodcastScriptLine, PodcastBlueprint, PodcastType } from '../types';
+import { LearningSource, PodcastScriptLine, PodcastBlueprint, PodcastType, PodcastChapter } from '../types';
 import { mergeBase64PCM } from '../utils/audioUtils';
 
 const MODEL_TEXT = 'gemini-2.0-flash-exp'; 
-const MODEL_AUDIO = 'gemini-2.5-flash-preview-tts'; // TTS is specific, keep if working, otherwise 2.0-flash-exp
-const MODEL_IMAGE = 'gemini-2.0-flash-exp'; // Use multimodal capability for image
+const MODEL_AUDIO = 'gemini-2.5-flash-preview-tts'; 
+const MODEL_IMAGE = 'gemini-2.5-flash-image'; 
+const API_KEY = process.env.API_KEY as string;
 
 export const useLearningAI = () => {
   const [generatingCount, setGeneratingCount] = useState(0);
   const isGenerating = generatingCount > 0;
 
-  const getClient = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const getClient = () => new GoogleGenAI({ apiKey: API_KEY });
 
   const cleanJson = (text: string) => {
     if (!text) return '';
@@ -112,21 +112,19 @@ export const useLearningAI = () => {
             
             TASK:
             Write a COMPREHENSIVE, WORD-FOR-WORD script.
-            The script MUST be sufficiently long (aim for 2500 words or ~40-50 dialogue turns).
+            Target Length: 800-1000 words (approx 5-7 minutes).
             
             STRUCTURE:
             - Iterate through EVERY chapter in the blueprint.
             - For EACH chapter:
               1. Host introduces the concept clearly.
-              2. Expert explains it in deep detail using the sources.
-              3. Provide multiple specific examples from the text.
-              4. Have a back-and-forth discussion.
-              5. Host asks a "Checkpoint" question to the listener.
+              2. Expert explains it using the sources.
+              3. Provide examples.
+              4. Brief discussion.
             
             IMPORTANT:
-            - Do not summarize quickly.
-            - Do not skip chapters.
-            - This is a full lesson.
+            - Be concise but informative.
+            - Do not be repetitive.
             
             OUTPUT JSON:
             {
@@ -148,8 +146,8 @@ export const useLearningAI = () => {
             ${sourceContext}
             
             Task: Create a deep-dive podcast script between "Host" (Energetic) and "Expert" (Calm).
-            Aim for 2000+ words to create a substantial episode (10+ minutes).
-            Cover the topic exhaustively.
+            Target Length: 800-1000 words (approx 5-7 minutes).
+            Cover the topic clearly and engagingly.
             
             OUTPUT JSON:
             {
@@ -167,7 +165,6 @@ export const useLearningAI = () => {
         contents: prompt,
         config: {
           responseMimeType: 'application/json',
-          // Removed thinkingConfig as it might not be supported on 2.0-flash-exp yet in all regions
         }
       });
 
@@ -194,31 +191,42 @@ export const useLearningAI = () => {
 
       const ai = getClient();
       
-      // CRITICAL CHANGE: Sequential processing.
-      // Parallel processing often hits rate limits or token limits per minute, resulting in dropped chunks.
-      // Sequential is slower but guarantees completeness for long scripts.
-      
-      // Chunking: Process 1 line at a time to ensure maximum stability, 
-      // or small groups if lines are very short. 
-      // Given "Teaching" mode usually has long paragraphs, 1 line per chunk is safer.
-      const CHUNK_SIZE = 1; 
+      // OPTIMIZATION: Use 4000 chars. 8000 was causing timeouts/failures. 4000 is safer.
+      const MAX_CHAR_PER_CHUNK = 4000; 
       const chunks: PodcastScriptLine[][] = [];
-      for (let i = 0; i < script.length; i += CHUNK_SIZE) {
-        chunks.push(script.slice(i, i + CHUNK_SIZE));
+      let currentChunk: PodcastScriptLine[] = [];
+      let currentLen = 0;
+
+      for (const line of script) {
+          const lineLen = line.text.length + 10;
+          if (currentLen + lineLen > MAX_CHAR_PER_CHUNK && currentChunk.length > 0) {
+              chunks.push(currentChunk);
+              currentChunk = [];
+              currentLen = 0;
+          }
+          currentChunk.push(line);
+          currentLen += lineLen;
       }
+      if (currentChunk.length > 0) chunks.push(currentChunk);
 
       const results: string[] = new Array(chunks.length).fill('');
-      let completed = 0;
       
       for (let i = 0; i < chunks.length; i++) {
           const chunk = chunks[i];
           const conversationText = chunk.map(line => `${line.speaker}: ${line.text}`).join('\n');
           const prompt = `TTS the following conversation:\n\n${conversationText}`;
 
+          // Rate Limit Cool-down: 10s delay between chunks to be extremely safe
+          if (i > 0) {
+              await new Promise(r => setTimeout(r, 10000));
+          }
+
           let retries = 0;
           let success = false;
+          // Increased to 5 retries to handle transient 429s better
+          const MAX_RETRIES = 5;
           
-          while (retries < 4 && !success) {
+          while (retries < MAX_RETRIES && !success) { 
               try {
                   const response = await ai.models.generateContent({
                       model: MODEL_AUDIO,
@@ -242,23 +250,37 @@ export const useLearningAI = () => {
                   } else {
                       throw new Error("Empty audio response");
                   }
-              } catch (e) {
+              } catch (e: any) {
                   retries++;
-                  // Exponential backoff
-                  const delay = 1000 * Math.pow(2, retries);
-                  console.warn(`Chunk ${i} failed (Attempt ${retries}). Retrying in ${delay}ms...`);
-                  await new Promise(r => setTimeout(r, delay));
+                  // Detect Quota errors (429/503/403) or generic "resource exhausted"
+                  const isQuota = e.message?.includes('429') || 
+                                  e.message?.includes('quota') || 
+                                  e.message?.includes('503') || 
+                                  e.message?.includes('resource exhausted');
+                  
+                  console.warn(`Chunk ${i} failed (Attempt ${retries}). Is Quota: ${isQuota}`, e);
+                  
+                  if (isQuota) {
+                      // Aggressive penalty box for quota errors
+                      const waitTime = retries * 10000; // 10s, 20s, 30s...
+                      console.log(`Quota hit. Waiting ${waitTime/1000}s...`);
+                      await new Promise(r => setTimeout(r, waitTime));
+                  } else {
+                      // Standard backoff
+                      await new Promise(r => setTimeout(r, 2000 * retries));
+                  }
               }
           }
-          
+
+          // If a chunk failed completely after all retries
           if (!success) {
-              console.error(`Failed to generate audio for chunk ${i} after retries.`);
-              // We continue, but this will result in a gap. 
-              // Alternatively, aborting might be better, but for UX, a gap is better than total failure.
+               console.error("Critical: Audio chunk generation failed permanently after max retries.");
+               return null;
           }
 
-          completed++;
-          if (onProgress) onProgress(Math.round((completed / chunks.length) * 100));
+          if (onProgress) {
+              onProgress(Math.round(((i + 1) / chunks.length) * 100));
+          }
       }
 
       const validAudioParts = results.filter(r => !!r);
@@ -282,8 +304,6 @@ export const useLearningAI = () => {
       Style: ${style}, Futuristic, Enterprise Tech, Dark Mode, Neon accents. 
       High contrast, 8k resolution, minimalist but detailed. Center composition.`;
 
-      // NOTE: Using 2.0-flash-exp to ensure availability if image model is flaky
-      // Ideally use imagen-3.0-generate-001 if available
       const response = await ai.models.generateContent({
         model: MODEL_IMAGE, 
         contents: { parts: [{ text: prompt }] }
@@ -344,12 +364,59 @@ export const useLearningAI = () => {
      return response.text || '';
   }, []);
 
+  // NEW: Feature 2 - Generate Chapters based on script/context
+  const generateChapters = useCallback(async (
+      context: string,
+      duration: number
+  ): Promise<PodcastChapter[]> => {
+      setGeneratingCount(c => c + 1);
+      try {
+          const ai = getClient();
+          const prompt = `
+          Analyze the following podcast content and generate 5-8 chapter markers.
+          Total duration: ${Math.floor(duration)} seconds.
+          
+          CONTENT:
+          ${context.substring(0, 20000)}...
+
+          OUTPUT JSON:
+          {
+            "chapters": [
+              { "title": "string", "startTime": number, "summary": "string", "objective": "string", "keyTakeaways": ["string"] }
+            ]
+          }
+          `;
+          
+          const response = await ai.models.generateContent({
+              model: MODEL_TEXT,
+              contents: prompt,
+              config: { responseMimeType: 'application/json' }
+          });
+          const parsed = JSON.parse(cleanJson(response.text || '{}'));
+          
+          if (parsed.chapters) {
+              return parsed.chapters.map((ch: any, i: number) => ({
+                  ...ch,
+                  id: `ch-${Date.now()}-${i}`,
+                  startTime: Math.min(ch.startTime, duration)
+              }));
+          }
+          return [];
+      } catch (e) {
+          console.error("Chapter gen error", e);
+          return [];
+      } finally {
+          setGeneratingCount(c => Math.max(0, c - 1));
+      }
+  }, []);
+
   return {
     isGenerating,
     generateBlueprint,
     generatePodcastScript,
     synthesizePodcastAudio,
     generateCoverImage,
-    chatWithSources
+    chatWithSources,
+    generateChapters
   };
 };

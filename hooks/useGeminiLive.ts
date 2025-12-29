@@ -1,13 +1,12 @@
-
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { ConnectionState, TranscriptionItem } from '../types';
 import { pcmToGeminiBlob, base64ToFloat32, createAudioBuffer, PCM_SAMPLE_RATE } from '../utils/audioUtils';
 
 // Gemini Model Configuration
-// Switching to 2.0-flash-exp as it is the stable public endpoint for Live API
 const MODEL_NAME = 'gemini-2.0-flash-exp';
 const OUTPUT_SAMPLE_RATE = 24000;
+const API_KEY = process.env.API_KEY as string;
 
 interface UseGeminiLiveProps {
   systemInstruction: string;
@@ -19,6 +18,7 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
   const [error, setError] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<TranscriptionItem[]>([]);
   const [volume, setVolume] = useState(0);
+  const [isMicMuted, setIsMicMuted] = useState(false);
 
   // Audio Contexts
   const inputContextRef = useRef<AudioContext | null>(null);
@@ -41,6 +41,9 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
   // Playback state
   const nextStartTimeRef = useRef<number>(0);
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+  
+  // Mute Ref (to avoid closure staleness in audio loop)
+  const isMicMutedRef = useRef(false);
 
   // Initialize Audio Contexts
   const ensureAudioContexts = useCallback(() => {
@@ -89,11 +92,6 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
   }, []);
 
   const connect = useCallback(async () => {
-    if (!process.env.API_KEY) {
-      setError("API Key not found in environment variables.");
-      return;
-    }
-
     try {
       setConnectionState(ConnectionState.CONNECTING);
       setError(null);
@@ -105,8 +103,12 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+      
+      // Reset mute state
+      setIsMicMuted(false);
+      isMicMutedRef.current = false;
 
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: API_KEY });
       
       // --- Setup Output Audio Chain (AI Voice) ---
       const outputCtx = outputContextRef.current!;
@@ -159,9 +161,9 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
             voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } },
           },
           systemInstruction: systemInstruction,
-          inputAudioTranscription: {}, 
-          outputAudioTranscription: {}, 
-          tools: [{ googleSearch: {} }],
+          // inputAudioTranscription: {}, 
+          // outputAudioTranscription: {}, 
+          // tools: [{ googleSearch: {} }],
         },
         callbacks: {
           onopen: () => {
@@ -176,6 +178,9 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
 
             // Audio Streaming
             processor.onaudioprocess = (e) => {
+              // Critical: Do not send data if muted
+              if (isMicMutedRef.current) return;
+
               const inputData = e.inputBuffer.getChannelData(0);
               const pcmBlob = pcmToGeminiBlob(inputData, PCM_SAMPLE_RATE);
               sessionPromise.then(session => {
@@ -198,18 +203,35 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
             if (msg.serverContent?.inputTranscription?.text) {
                setTranscripts(prev => {
                    const last = prev[prev.length - 1];
-                   if (last && last.role === 'Corey') {
+                   if (last && last.role === 'user') {
                        return [...prev.slice(0, -1), { ...last, text: last.text + msg.serverContent!.inputTranscription!.text }];
                    }
                    return [...prev, { id: Date.now().toString(), role: 'user', text: msg.serverContent!.inputTranscription!.text, timestamp: new Date() }];
                });
             }
 
-            // Interruptions
+            // Interruptions (Barge-in)
             if (msg.serverContent?.interrupted) {
-              activeSourcesRef.current.forEach(source => { try { source.stop(); } catch (e) {} });
+              console.log('Interrupted');
+              
+              // 1. Stop all currently playing sources instantly
+              activeSourcesRef.current.forEach(source => { 
+                  try { source.stop(); } catch (e) {} 
+              });
               activeSourcesRef.current.clear();
-              if (outputContextRef.current) nextStartTimeRef.current = outputContextRef.current.currentTime;
+              
+              // 2. Reset Audio Output Context Time Cursor
+              // This ensures we don't schedule the next chunk way in the future if we just cancelled a long response
+              if (outputContextRef.current) {
+                  // Add a tiny buffer to avoid overlap artifacts
+                  nextStartTimeRef.current = outputContextRef.current.currentTime + 0.01;
+              }
+
+              // 3. Cancel scheduled values on gain node to stop ringing
+              if (outputNodeRef.current && outputContextRef.current) {
+                  outputNodeRef.current.gain.cancelScheduledValues(outputContextRef.current.currentTime);
+                  outputNodeRef.current.gain.setValueAtTime(1, outputContextRef.current.currentTime);
+              }
               return;
             }
 
@@ -225,7 +247,7 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
               source.connect(outputNodeRef.current!);
               
               const now = outputCtx.currentTime;
-              const startAt = Math.max(nextStartTimeRef.current, now + 0.05);
+              const startAt = Math.max(nextStartTimeRef.current, now + 0.02); // Lower buffer for lower latency
               source.start(startAt);
               nextStartTimeRef.current = startAt + audioBuffer.duration;
               
@@ -310,6 +332,23 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
     }
   }, [connectionState]);
 
+  const toggleMic = useCallback(() => {
+    if (streamRef.current) {
+      const audioTracks = streamRef.current.getAudioTracks();
+      if (audioTracks.length > 0) {
+        const shouldEnable = !audioTracks[0].enabled;
+        audioTracks.forEach(track => {
+            track.enabled = shouldEnable;
+        });
+        
+        // Update both state and ref
+        const newMutedState = !shouldEnable;
+        setIsMicMuted(newMutedState);
+        isMicMutedRef.current = newMutedState;
+      }
+    }
+  }, []);
+
   return {
     connectionState,
     error,
@@ -317,6 +356,8 @@ export const useGeminiLive = ({ systemInstruction, voiceName }: UseGeminiLivePro
     volume,
     connect,
     disconnect,
-    sendVideoFrame
+    sendVideoFrame,
+    isMicMuted,
+    toggleMic
   };
 };
