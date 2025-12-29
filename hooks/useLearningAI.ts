@@ -1,9 +1,10 @@
+
 import { useState, useCallback } from 'react';
 import { GoogleGenAI, Modality } from '@google/genai';
 import { LearningSource, PodcastScriptLine, PodcastBlueprint, PodcastType, PodcastChapter } from '../types';
 import { mergeBase64PCM } from '../utils/audioUtils';
 
-const MODEL_TEXT = 'gemini-2.0-flash-exp'; 
+const MODEL_TEXT = 'gemini-3-flash-preview'; 
 const MODEL_AUDIO = 'gemini-2.5-flash-preview-tts'; 
 const MODEL_IMAGE = 'gemini-2.5-flash-image'; 
 const API_KEY = process.env.API_KEY as string;

@@ -1,10 +1,11 @@
+
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { ConnectionState, TranscriptionItem } from '../types';
 import { pcmToGeminiBlob, base64ToFloat32, createAudioBuffer, PCM_SAMPLE_RATE } from '../utils/audioUtils';
 
 // Gemini Model Configuration
-const MODEL_NAME = 'gemini-2.0-flash-exp';
+const MODEL_NAME = 'gemini-2.5-flash-native-audio-preview-09-2025';
 const OUTPUT_SAMPLE_RATE = 24000;
 const API_KEY = process.env.API_KEY as string;
 

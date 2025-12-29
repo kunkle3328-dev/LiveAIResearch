@@ -100,12 +100,21 @@ const LessonPlayerInternal: React.FC<PodcastPlayerProps> = ({ episode, sourceCon
       const source = ctx.createBufferSource();
       source.buffer = bufferRef.current;
       
+      // Safety: Ensure gain node exists and is connected
       if (!gainNodeRef.current) {
           gainNodeRef.current = ctx.createGain();
           gainNodeRef.current.connect(ctx.destination);
       }
       
-      source.connect(gainNodeRef.current);
+      try {
+          source.connect(gainNodeRef.current);
+      } catch (err) {
+          console.error("Audio Connection Error:", err);
+          // Recovery: Recreate gain node if connection fails (likely context mismatch)
+          gainNodeRef.current = ctx.createGain();
+          gainNodeRef.current.connect(ctx.destination);
+          source.connect(gainNodeRef.current);
+      }
       
       // Strict Clamping for Offset
       let offset = pauseTimeRef.current;
@@ -182,6 +191,8 @@ const LessonPlayerInternal: React.FC<PodcastPlayerProps> = ({ episode, sourceCon
         // Close existing context if any
         if (audioContextRef.current) {
             audioContextRef.current.close();
+            audioContextRef.current = null;
+            gainNodeRef.current = null;
         }
 
         const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -205,6 +216,13 @@ const LessonPlayerInternal: React.FC<PodcastPlayerProps> = ({ episode, sourceCon
     return () => {
         if (sourceRef.current) try { sourceRef.current.stop(); } catch(e){}
         if (audioContextRef.current) audioContextRef.current.close();
+        
+        // Nullify to prevent stale access
+        audioContextRef.current = null;
+        gainNodeRef.current = null;
+        bufferRef.current = null;
+        sourceRef.current = null;
+        
         cancelAnimationFrame(animationRef.current);
     };
   }, [episode.audioBase64]);
@@ -217,13 +235,17 @@ const LessonPlayerInternal: React.FC<PodcastPlayerProps> = ({ episode, sourceCon
         getIsPlaying: () => isPlayingRef.current, 
         getCurrentTime: () => pauseTimeRef.current,
         fadeTo: async (volume: number, duration: number) => {
-            if (gainNodeRef.current && audioContextRef.current) {
+            if (gainNodeRef.current && audioContextRef.current && audioContextRef.current.state === 'running') {
                 const ctx = audioContextRef.current;
                 const gain = gainNodeRef.current.gain;
-                gain.cancelScheduledValues(ctx.currentTime);
-                gain.setValueAtTime(gain.value, ctx.currentTime);
-                gain.linearRampToValueAtTime(volume, ctx.currentTime + duration);
-                await new Promise(r => setTimeout(r, duration * 1000));
+                try {
+                    gain.cancelScheduledValues(ctx.currentTime);
+                    gain.setValueAtTime(gain.value, ctx.currentTime);
+                    gain.linearRampToValueAtTime(volume, ctx.currentTime + duration);
+                    await new Promise(r => setTimeout(r, duration * 1000));
+                } catch (e) {
+                    console.warn("Fade failed", e);
+                }
             }
         }
     });
