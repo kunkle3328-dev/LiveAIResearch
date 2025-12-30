@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -10,14 +11,18 @@
         theme: {
           extend: {
             colors: {
-              slate: {
-                850: '#151e32',
-                900: '#0f172a',
-                950: '#020617',
-              },
-              cyan: {
-                450: '#0ea5e9',
-                550: '#0891b2',
+              // Semantic Colors mapped to CSS Variables
+              skin: {
+                base: 'var(--color-base)',
+                surface: 'var(--color-surface)',
+                'surface-hover': 'var(--color-surface-hover)',
+                border: 'var(--color-border)',
+                accent: 'var(--color-accent)',
+                'accent-hover': 'var(--color-accent-hover)',
+                'accent-dim': 'var(--color-accent-dim)',
+                secondary: 'var(--color-secondary)', 
+                text: 'var(--color-text-main)',
+                muted: 'var(--color-text-muted)',
               }
             },
             fontFamily: {
@@ -26,15 +31,27 @@
             },
             boxShadow: {
               'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.5)',
-              'neon-blue': '0 0 15px rgba(14, 165, 233, 0.4), 0 0 30px rgba(14, 165, 233, 0.1)',
-              'neon-red': '0 0 15px rgba(239, 68, 68, 0.4), 0 0 30px rgba(239, 68, 68, 0.1)',
+              'glow': '0 0 20px var(--color-glow), 0 0 40px var(--color-glow-dim)',
+              'glow-sm': '0 0 10px var(--color-glow)',
               'inner-light': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.05)',
             },
+            backgroundImage: {
+              'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
+              'glass-shine': 'linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 100%)',
+              'shimmer': 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)',
+            },
             animation: {
-              'blob': 'blob 10s infinite',
-              'pulse-glow': 'pulse-glow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'blob': 'blob 20s infinite alternate',
+              'pulse-glow': 'pulse-glow 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
               'scanline': 'scanline 8s linear infinite',
               'loader': 'loader 2s ease-in-out infinite',
+              'float': 'float 6s ease-in-out infinite',
+              'fade-in-up': 'fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
+              'shimmer-slide': 'shimmerSlide 2s infinite',
+              'progress-indeterminate': 'progressIndeterminate 1.5s infinite linear',
+              'spin-slow': 'spin 8s linear infinite',
+              'spin-reverse-slow': 'spinReverse 10s linear infinite',
+              'ping-slow': 'ping 3s cubic-bezier(0, 0, 0.2, 1) infinite',
             },
             keyframes: {
               blob: {
@@ -44,8 +61,8 @@
                 '100%': { transform: 'translate(0px, 0px) scale(1)' },
               },
               'pulse-glow': {
-                '0%, 100%': { opacity: 1, boxShadow: '0 0 20px rgba(14, 165, 233, 0.4)' },
-                '50%': { opacity: .7, boxShadow: '0 0 10px rgba(14, 165, 233, 0.1)' },
+                '0%, 100%': { opacity: 1, boxShadow: '0 0 25px var(--color-glow)' },
+                '50%': { opacity: .6, boxShadow: '0 0 10px var(--color-glow-dim)' },
               },
               scanline: {
                 '0%': { transform: 'translateY(-100%)' },
@@ -54,6 +71,26 @@
               loader: {
                  '0%, 100%': { width: '0%', left: '0%' },
                  '50%': { width: '100%', left: '0%' },
+              },
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-10px)' },
+              },
+              fadeInUp: {
+                '0%': { opacity: 0, transform: 'translateY(10px)' },
+                '100%': { opacity: 1, transform: 'translateY(0)' },
+              },
+              shimmerSlide: {
+                '0%': { transform: 'translateX(-100%)' },
+                '100%': { transform: 'translateX(100%)' }
+              },
+              progressIndeterminate: {
+                '0%': { transform: 'translateX(-100%)' },
+                '100%': { transform: 'translateX(200%)' }
+              },
+              spinReverse: {
+                '0%': { transform: 'rotate(0deg)' },
+                '100%': { transform: 'rotate(-360deg)' }
               }
             }
           }
@@ -63,13 +100,44 @@
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
+      :root {
+        /* Default: Nexus (Balanced Cyberpunk) */
+        --color-base: #020617; 
+        --color-surface: rgba(15, 23, 42, 0.60);
+        --color-surface-hover: rgba(30, 41, 59, 0.75);
+        --color-border: rgba(148, 163, 184, 0.15);
+        --color-accent: #06b6d4; /* Cyan 500 */
+        --color-accent-hover: #22d3ee; 
+        --color-accent-dim: rgba(6, 182, 212, 0.15);
+        --color-secondary: #6366f1; /* Indigo 500 */
+        --color-text-main: #f8fafc;
+        --color-text-muted: #94a3b8;
+        --color-glow: rgba(6, 182, 212, 0.4);
+        --color-glow-dim: rgba(6, 182, 212, 0.1);
+        --bg-gradient: radial-gradient(circle at 10% 20%, rgba(6, 182, 212, 0.08), transparent 40%),
+                       radial-gradient(circle at 90% 80%, rgba(99, 102, 241, 0.08), transparent 40%),
+                       linear-gradient(180deg, #020617 0%, #0f172a 100%);
+      }
+
+      /* ... (Theme overrides kept same as previous) ... */
+      [data-theme='obsidian'] { --color-base: #000000; --color-surface: rgba(24, 24, 27, 0.7); --color-accent: #ffffff; --color-glow: rgba(255, 255, 255, 0.25); }
+      [data-theme='aether'] { --color-base: #17153b; --color-accent: #c084fc; --color-glow: rgba(192, 132, 252, 0.4); }
+      [data-theme='vertex'] { --color-base: #020c07; --color-accent: #10b981; --color-glow: rgba(16, 185, 129, 0.3); }
+      [data-theme='crimson'] { --color-base: #0f0204; --color-accent: #f87171; --color-glow: rgba(248, 113, 113, 0.4); }
+      [data-theme='midnight'] { --color-base: #010612; --color-accent: #3b82f6; --color-glow: rgba(59, 130, 246, 0.4); }
+      [data-theme='cyber'] { --color-base: #0b0514; --color-accent: #e879f9; --color-glow: rgba(232, 121, 249, 0.4); }
+      [data-theme='aurora'] { --color-base: #041C1C; --color-accent: #34d399; --color-glow: rgba(52, 211, 153, 0.5); }
+      [data-theme='solaris'] { --color-base: #0f0a00; --color-accent: #f59e0b; --color-glow: rgba(245, 158, 11, 0.5); }
+      [data-theme='royale'] { --color-base: #1a0b2e; --color-accent: #fbbf24; --color-glow: rgba(251, 191, 36, 0.5); }
+      [data-theme='terminal'] { --color-base: #050505; --color-accent: #39ff14; --color-glow: rgba(57, 255, 20, 0.6); }
+
       body {
-        background-color: #020617;
-        color: #f8fafc;
-        overflow: hidden; /* Prevent scrolling on body */
+        background-color: var(--color-base);
+        color: var(--color-text-main);
+        overflow: hidden; 
+        transition: background-color 0.7s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.7s ease;
       }
       
-      /* Advanced Background */
       .bg-gradient-mesh {
         position: fixed;
         top: 0;
@@ -77,95 +145,58 @@
         width: 100vw;
         height: 100vh;
         z-index: -1;
-        background: 
-          radial-gradient(circle at 15% 50%, rgba(14, 165, 233, 0.08), transparent 40%),
-          radial-gradient(circle at 85% 30%, rgba(99, 102, 241, 0.08), transparent 40%),
-          linear-gradient(180deg, #020617 0%, #0f172a 100%);
+        background: var(--bg-gradient);
+        transition: background 1s cubic-bezier(0.2, 0.8, 0.2, 1);
       }
 
-      /* Premium Glassmorphism */
       .glass-panel {
-        background: rgba(15, 23, 42, 0.65);
-        backdrop-filter: blur(20px) saturate(180%);
-        -webkit-backdrop-filter: blur(20px) saturate(180%);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        box-shadow: 
-          0 4px 6px -1px rgba(0, 0, 0, 0.1), 
-          0 2px 4px -1px rgba(0, 0, 0, 0.06),
-          inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        background: linear-gradient(145deg, var(--color-surface) 0%, rgba(var(--color-base), 0.4) 100%);
+        backdrop-filter: blur(24px) saturate(160%);
+        -webkit-backdrop-filter: blur(24px) saturate(160%);
+        border: 1px solid var(--color-border);
+        box-shadow: 0 8px 40px -10px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
       }
 
       .glass-input {
-        background: rgba(2, 6, 23, 0.6);
-        border: 1px solid rgba(148, 163, 184, 0.1);
-        color: white;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        background: rgba(0,0,0,0.25);
+        border: 1px solid var(--color-border);
+        color: var(--color-text-main);
+        backdrop-filter: blur(10px);
       }
       .glass-input:focus {
-        background: rgba(2, 6, 23, 0.9);
-        border-color: rgba(14, 165, 233, 0.5);
-        box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.5), 0 0 15px rgba(14, 165, 233, 0.1);
+        background: rgba(0,0,0,0.45);
+        border-color: var(--color-accent);
         outline: none;
       }
 
-      /* Futuristic Button */
       .btn-glow {
-        background: linear-gradient(135deg, rgba(6, 182, 212, 0.9) 0%, rgba(59, 130, 246, 0.9) 100%);
-        box-shadow: 0 0 20px rgba(6, 182, 212, 0.2);
+        background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-hover) 100%);
+        box-shadow: 0 0 25px var(--color-accent-dim), inset 0 1px 0 rgba(255,255,255,0.2);
         border: 1px solid rgba(255, 255, 255, 0.1);
-        backdrop-filter: blur(4px);
-        position: relative;
-        overflow: hidden;
-      }
-      .btn-glow::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-        transition: 0.5s;
-      }
-      .btn-glow:hover::before {
-        left: 100%;
-      }
-      .btn-glow:active {
-        transform: scale(0.98);
-      }
-      
-      .btn-glass {
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        backdrop-filter: blur(4px);
-      }
-      .btn-glass:hover {
-        background: rgba(255, 255, 255, 0.08);
-        border-color: rgba(255, 255, 255, 0.2);
+        color: var(--color-base);
+        font-weight: 700;
       }
 
-      /* Scrollbar */
-      ::-webkit-scrollbar {
-        width: 4px;
-        height: 4px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: rgba(71, 85, 105, 0.5);
-        border-radius: 2px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: rgba(14, 165, 233, 0.6);
+      /* Tech Overlay for Splash */
+      .tech-grid-bg {
+         background-size: 40px 40px;
+         background-image: 
+            linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+         mask-image: radial-gradient(circle at center, black 0%, transparent 80%);
       }
       
-      /* Grid Overlay */
-      .grid-bg {
-        background-size: 40px 40px;
-        background-image: linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-                          linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      .scanline-overlay {
+          background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.2));
+          background-size: 100% 4px;
+          pointer-events: none;
       }
+
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+      ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--color-secondary); }
     </style>
   <script type="importmap">
 {
@@ -182,12 +213,11 @@
     <div class="bg-gradient-mesh"></div>
     <div class="fixed inset-0 grid-bg pointer-events-none z-0"></div>
     
-    <!-- Ambiance -->
     <div class="fixed top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
-        <div class="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-indigo-900/10 rounded-full mix-blend-screen filter blur-[100px] animate-blob"></div>
-        <div class="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-cyan-900/10 rounded-full mix-blend-screen filter blur-[100px] animate-blob animation-delay-2000"></div>
+        <div class="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-skin-accent opacity-10 rounded-full mix-blend-screen filter blur-[120px] animate-blob"></div>
+        <div class="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-skin-secondary opacity-10 rounded-full mix-blend-screen filter blur-[120px] animate-blob animation-delay-4000"></div>
     </div>
     
-    <div id="root" class="relative z-10 h-screen flex flex-col"></div>
+    <div id="root" class="relative z-10 h-screen flex flex-col text-skin-text"></div>
   </body>
 </html>

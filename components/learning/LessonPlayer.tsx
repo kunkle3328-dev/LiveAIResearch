@@ -309,9 +309,9 @@ const LessonPlayerInternal: React.FC<PodcastPlayerProps> = ({ episode, sourceCon
       {/* Mobile Top Bar */}
       {!showStudyPanel && (
         <div className="md:hidden flex items-center justify-between mb-1 w-full shrink-0">
-            <button onClick={onBack} className="text-slate-400 p-2">Back</button>
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Now Playing</span>
-            <button onClick={() => setShowDiagnostics(true)} className="p-2 text-slate-500">
+            <button onClick={onBack} className="text-skin-muted p-2">Back</button>
+            <span className="text-xs font-bold text-skin-muted uppercase tracking-widest">Now Playing</span>
+            <button onClick={() => setShowDiagnostics(true)} className="p-2 text-skin-muted">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z" />
                     <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z" />
@@ -328,23 +328,23 @@ const LessonPlayerInternal: React.FC<PodcastPlayerProps> = ({ episode, sourceCon
       }`}>
         
         <div className="hidden md:flex justify-between items-center mb-2">
-             <button onClick={onBack} className="text-slate-400 hover:text-white flex items-center gap-2 text-sm font-medium">
+             <button onClick={onBack} className="text-skin-muted hover:text-skin-text flex items-center gap-2 text-sm font-medium">
                 Back to Dashboard
             </button>
-            <button onClick={() => setShowDiagnostics(true)} className="text-[10px] text-slate-500 hover:text-cyan-400 font-bold uppercase tracking-widest flex items-center gap-2">
+            <button onClick={() => setShowDiagnostics(true)} className="text-[10px] text-skin-muted hover:text-skin-accent font-bold uppercase tracking-widest flex items-center gap-2">
                  Diagnostics
                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
             </button>
         </div>
         
-        <div className={`glass-panel rounded-3xl border border-white/5 relative overflow-hidden shadow-2xl flex flex-col items-center text-center transition-all duration-500 ${
+        <div className={`glass-panel rounded-3xl border border-skin-border relative overflow-hidden shadow-2xl flex flex-col items-center text-center transition-all duration-500 ${
             showStudyPanel 
                 ? 'p-3 md:p-6 flex-row md:flex-col gap-3 md:gap-0' 
                 : 'p-6 md:p-8'
         }`}>
              
              {/* Cover Art / Visualizer Area */}
-             <div className={`relative rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 shrink-0 transition-all bg-slate-900 ${
+             <div className={`relative rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 shrink-0 transition-all bg-skin-base ${
                  showStudyPanel 
                     ? 'hidden md:block w-32 h-32 md:w-48 md:h-48 md:mb-4' 
                     : 'w-64 h-64 mb-8'
@@ -360,7 +360,7 @@ const LessonPlayerInternal: React.FC<PodcastPlayerProps> = ({ episode, sourceCon
                      episode.coverImageBase64 ? (
                          <img src={`data:image/png;base64,${episode.coverImageBase64}`} className="w-full h-full object-cover" />
                      ) : (
-                         <div className="w-full h-full bg-slate-800 flex items-center justify-center">Podcast</div>
+                         <div className="w-full h-full bg-skin-surface flex items-center justify-center text-skin-muted">Podcast</div>
                      )
                  )}
              </div>
@@ -368,19 +368,19 @@ const LessonPlayerInternal: React.FC<PodcastPlayerProps> = ({ episode, sourceCon
              {/* Player Content */}
              <div className={`w-full flex flex-col justify-center ${showStudyPanel ? 'text-left md:text-center' : 'text-center'}`}>
                 <div className={`space-y-1 w-full ${showStudyPanel ? 'mb-2 md:mb-4' : 'mb-8'}`}>
-                    <h2 className={`font-bold text-white leading-tight line-clamp-2 ${showStudyPanel ? 'text-sm md:text-xl' : 'text-xl'}`}>
+                    <h2 className={`font-bold text-skin-text leading-tight line-clamp-2 ${showStudyPanel ? 'text-sm md:text-xl' : 'text-xl'}`}>
                         {episode.title}
                     </h2>
-                    {!showStudyPanel && <p className="text-slate-400 text-xs uppercase tracking-widest">{episode.type} Episode</p>}
+                    {!showStudyPanel && <p className="text-skin-muted text-xs uppercase tracking-widest">{episode.type} Episode</p>}
                 </div>
                 
                 {/* Progress */}
                 <div className="w-full space-y-2 mb-2 md:mb-6">
-                    <div className="group relative w-full h-1.5 bg-slate-800 rounded-full cursor-pointer">
-                        <div className="absolute inset-y-0 left-0 bg-indigo-500 rounded-full" style={{ width: `${progress}%` }}></div>
+                    <div className="group relative w-full h-1.5 bg-skin-surface rounded-full cursor-pointer">
+                        <div className="absolute inset-y-0 left-0 bg-skin-accent rounded-full" style={{ width: `${progress}%` }}></div>
                         <input type="range" min="0" max="100" step="0.1" value={progress} onChange={handleSeek} className="absolute inset-0 w-full opacity-0 cursor-pointer" />
                     </div>
-                    <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                    <div className="flex justify-between text-[10px] font-mono text-skin-muted">
                         <span>{formatTime(currentTime)}</span>
                         <span>{formatTime(duration)}</span>
                     </div>
@@ -389,7 +389,7 @@ const LessonPlayerInternal: React.FC<PodcastPlayerProps> = ({ episode, sourceCon
                 {/* Controls */}
                 <div className={`flex items-center gap-4 md:gap-8 ${showStudyPanel ? 'justify-start md:justify-center' : 'justify-center'}`}>
                     
-                    <button className="text-slate-500 hover:text-white" onClick={() => handleSeek({ target: { value: Math.max(0, progress - 5) } } as any)}>
+                    <button className="text-skin-muted hover:text-skin-text" onClick={() => handleSeek({ target: { value: Math.max(0, progress - 5) } } as any)}>
                         <span className="hidden md:inline">-10s</span>
                         <span className="md:hidden">10s</span>
                     </button>
@@ -399,17 +399,17 @@ const LessonPlayerInternal: React.FC<PodcastPlayerProps> = ({ episode, sourceCon
                         className={`rounded-full flex items-center justify-center hover:scale-105 transition-transform shadow-lg ${
                             showStudyPanel ? 'w-10 h-10 md:w-16 md:h-16' : 'w-16 h-16'
                         } ${
-                            episode.type === 'Teaching' ? 'bg-indigo-500 shadow-indigo-500/40' : 'bg-cyan-500 shadow-cyan-500/40'
+                            episode.type === 'Teaching' ? 'bg-skin-secondary shadow-skin-secondary/40' : 'bg-skin-accent shadow-skin-accent/40'
                         }`}
                     >
                         {isPlaying ? (
-                            <svg className={`${showStudyPanel ? 'w-4 h-4 md:w-6 md:h-6' : 'w-6 h-6'} text-white`} fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>
+                            <svg className={`${showStudyPanel ? 'w-4 h-4 md:w-6 md:h-6' : 'w-6 h-6'} text-skin-base`} fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>
                         ) : (
-                            <svg className={`${showStudyPanel ? 'w-4 h-4 md:w-6 md:h-6' : 'w-6 h-6'} text-white ml-1`} fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                            <svg className={`${showStudyPanel ? 'w-4 h-4 md:w-6 md:h-6' : 'w-6 h-6'} text-skin-base ml-1`} fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                         )}
                     </button>
 
-                    <button className="text-slate-500 hover:text-white" onClick={() => handleSeek({ target: { value: Math.min(100, progress + 5) } } as any)}>
+                    <button className="text-skin-muted hover:text-skin-text" onClick={() => handleSeek({ target: { value: Math.min(100, progress + 5) } } as any)}>
                         <span className="hidden md:inline">+10s</span>
                         <span className="md:hidden">10s</span>
                     </button>
@@ -417,7 +417,7 @@ const LessonPlayerInternal: React.FC<PodcastPlayerProps> = ({ episode, sourceCon
                     {showStudyPanel && (
                          <button 
                              onClick={() => setShowStudyPanel(false)}
-                             className="md:hidden ml-auto text-xs font-bold text-slate-400 uppercase border border-white/10 px-3 py-1.5 rounded-full"
+                             className="md:hidden ml-auto text-xs font-bold text-skin-muted uppercase border border-skin-border px-3 py-1.5 rounded-full"
                          >
                              Close
                          </button>
@@ -427,7 +427,7 @@ const LessonPlayerInternal: React.FC<PodcastPlayerProps> = ({ episode, sourceCon
                 <div className={`mt-6 ${showStudyPanel ? 'hidden md:block' : 'block'}`}>
                    <button 
                        onClick={() => setShowStudyPanel(!showStudyPanel)}
-                       className="text-xs font-bold text-slate-400 hover:text-white uppercase tracking-widest border border-white/10 px-4 py-2 rounded-full hover:bg-white/5 transition-colors"
+                       className="text-xs font-bold text-skin-muted hover:text-skin-text uppercase tracking-widest border border-skin-border px-4 py-2 rounded-full hover:bg-skin-surface-hover transition-colors"
                    >
                        {showStudyPanel ? 'Hide Tools' : 'Open Production Tools'}
                    </button>
@@ -438,32 +438,32 @@ const LessonPlayerInternal: React.FC<PodcastPlayerProps> = ({ episode, sourceCon
 
       {/* RIGHT PANEL: Enterprise Tools */}
       {showStudyPanel && (
-        <div className="flex-1 w-full flex flex-col glass-panel rounded-3xl border border-white/5 overflow-hidden shadow-xl min-h-0 animate-in fade-in slide-in-from-right-4 duration-300">
+        <div className="flex-1 w-full flex flex-col glass-panel rounded-3xl border border-skin-border overflow-hidden shadow-xl min-h-0 animate-in fade-in slide-in-from-right-4 duration-300">
             {/* Tabs */}
-            <div className="flex border-b border-white/5 bg-slate-900/50 shrink-0">
+            <div className="flex border-b border-skin-border bg-skin-surface shrink-0">
                 <button 
                     onClick={() => setActiveTab('chapters')}
-                    className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider ${activeTab === 'chapters' ? 'text-white border-b-2 border-indigo-500' : 'text-slate-500 hover:text-slate-300'}`}
+                    className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider ${activeTab === 'chapters' ? 'text-skin-text border-b-2 border-skin-secondary' : 'text-skin-muted hover:text-skin-text'}`}
                 >
                     Chapters
                 </button>
                 <button 
                     onClick={() => setActiveTab('producer')}
-                    className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 ${activeTab === 'producer' ? 'text-white border-b-2 border-red-500' : 'text-slate-500 hover:text-slate-300'}`}
+                    className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 ${activeTab === 'producer' ? 'text-skin-text border-b-2 border-red-500' : 'text-skin-muted hover:text-skin-text'}`}
                 >
-                    <div className={`w-2 h-2 rounded-full ${tutorConnectionState === ConnectionState.CONNECTED ? 'bg-red-500 animate-pulse' : 'bg-slate-500'}`}></div>
+                    <div className={`w-2 h-2 rounded-full ${tutorConnectionState === ConnectionState.CONNECTED ? 'bg-red-500 animate-pulse' : 'bg-skin-muted'}`}></div>
                     Producer
                 </button>
                 <button 
                     onClick={() => setActiveTab('glossary')}
-                    className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider ${activeTab === 'glossary' ? 'text-white border-b-2 border-cyan-500' : 'text-slate-500 hover:text-slate-300'}`}
+                    className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider ${activeTab === 'glossary' ? 'text-skin-text border-b-2 border-skin-accent' : 'text-skin-muted hover:text-skin-text'}`}
                 >
                     Terms
                 </button>
             </div>
 
             {/* Content Container */}
-            <div className="flex-1 overflow-y-auto bg-slate-900/30 relative custom-scrollbar">
+            <div className="flex-1 overflow-y-auto bg-skin-base/30 relative custom-scrollbar">
                 
                 {activeTab === 'chapters' && (
                     <ChapterManager 
@@ -490,9 +490,9 @@ const LessonPlayerInternal: React.FC<PodcastPlayerProps> = ({ episode, sourceCon
                 {activeTab === 'glossary' && episode.blueprint?.glossary && (
                     <div className="p-4 md:p-6 grid grid-cols-1 gap-4 pb-20">
                         {episode.blueprint.glossary.map((term, i) => (
-                            <div key={i} className="p-4 bg-slate-800/40 rounded-xl border border-white/5">
-                                <div className="text-sm font-bold text-cyan-400 mb-1">{term.term}</div>
-                                <div className="text-xs text-slate-300 leading-relaxed">{term.definition}</div>
+                            <div key={i} className="p-4 bg-skin-surface rounded-xl border border-skin-border">
+                                <div className="text-sm font-bold text-skin-accent mb-1">{term.term}</div>
+                                <div className="text-xs text-skin-text leading-relaxed">{term.definition}</div>
                             </div>
                         ))}
                     </div>

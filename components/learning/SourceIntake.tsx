@@ -36,9 +36,9 @@ export const SourceIntake: React.FC<SourceIntakeProps> = ({ onAddSource, onCance
   };
 
   return (
-    <div className="glass-panel p-6 rounded-2xl border border-white/10 animate-in zoom-in-95 duration-200">
-      <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-cyan-400">
+    <div className="glass-panel p-6 rounded-2xl border border-skin-border animate-in zoom-in-95 duration-200">
+      <h3 className="text-lg font-bold text-skin-text mb-4 flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-skin-accent">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         Add Knowledge Source
@@ -48,14 +48,14 @@ export const SourceIntake: React.FC<SourceIntakeProps> = ({ onAddSource, onCance
         <button 
           type="button"
           onClick={() => setType('text')}
-          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${type === 'text' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${type === 'text' ? 'bg-skin-accent-dim text-skin-accent border border-skin-accent' : 'bg-skin-surface text-skin-muted hover:bg-skin-surface-hover'}`}
         >
           Paste Text
         </button>
         <button 
           type="button"
           onClick={() => setType('url')}
-          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${type === 'url' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${type === 'url' ? 'bg-skin-accent-dim text-skin-accent border border-skin-accent' : 'bg-skin-surface text-skin-muted hover:bg-skin-surface-hover'}`}
         >
           Web URL
         </button>
@@ -63,40 +63,40 @@ export const SourceIntake: React.FC<SourceIntakeProps> = ({ onAddSource, onCance
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Title</label>
+          <label className="block text-xs font-bold text-skin-muted uppercase tracking-wider mb-1">Title</label>
           <input 
             type="text" 
             required
             value={title}
             onChange={e => setTitle(e.target.value)}
-            className="w-full glass-input rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-cyan-500/50"
+            className="w-full glass-input rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-skin-accent"
             placeholder="e.g. Q3 Compliance Handbook"
           />
         </div>
 
         {type === 'text' ? (
           <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Content</label>
+            <label className="block text-xs font-bold text-skin-muted uppercase tracking-wider mb-1">Content</label>
             <textarea 
               required
               value={content}
               onChange={e => setContent(e.target.value)}
-              className="w-full h-48 glass-input rounded-lg px-4 py-3 text-sm focus:ring-1 focus:ring-cyan-500/50 font-mono"
+              className="w-full h-48 glass-input rounded-lg px-4 py-3 text-sm focus:ring-1 focus:ring-skin-accent font-mono"
               placeholder="Paste document text here..."
             />
           </div>
         ) : (
           <div>
-             <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">URL</label>
+             <label className="block text-xs font-bold text-skin-muted uppercase tracking-wider mb-1">URL</label>
              <input 
                 type="url" 
                 required
                 value={url}
                 onChange={e => setUrl(e.target.value)}
-                className="w-full glass-input rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-cyan-500/50"
+                className="w-full glass-input rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-skin-accent"
                 placeholder="https://..."
              />
-             <p className="text-[10px] text-slate-500 mt-2">
+             <p className="text-[10px] text-skin-muted mt-2">
                Note: In this demo environment, URLs are stored as references. For full analysis, please paste the text content directly above.
              </p>
           </div>
@@ -106,13 +106,13 @@ export const SourceIntake: React.FC<SourceIntakeProps> = ({ onAddSource, onCance
             <button 
               type="button" 
               onClick={onCancel}
-              className="px-4 py-2 text-sm text-slate-400 hover:text-white"
+              className="px-4 py-2 text-sm text-skin-muted hover:text-skin-text"
             >
                 Cancel
             </button>
             <button 
               type="submit" 
-              className="px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold rounded-lg shadow-lg shadow-cyan-500/20 transition-all"
+              className="px-6 py-2 btn-glow text-white text-sm font-bold rounded-lg shadow-lg transition-all"
             >
                 Add Source
             </button>

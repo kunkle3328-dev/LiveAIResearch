@@ -146,25 +146,25 @@ export const CurriculumBuilder: React.FC<PodcastGeneratorProps> = ({ sources, on
   };
 
   return (
-    <div className="glass-panel p-6 md:p-8 rounded-2xl border border-white/10 max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4">
+    <div className="glass-panel p-6 md:p-8 rounded-2xl border border-skin-border max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4">
       <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold text-white mb-2">Create Learning Podcast</h2>
-        <p className="text-slate-400 text-sm">Turn your {sources.length} sources into an engaging audio episode.</p>
+        <h2 className="text-2xl font-bold text-skin-text mb-2">Create Learning Podcast</h2>
+        <p className="text-skin-muted text-sm">Turn your {sources.length} sources into an engaging audio episode.</p>
       </div>
 
       <div className="space-y-6">
         
         {/* Toggle Type */}
-        <div className="flex bg-slate-900/50 p-1 rounded-xl border border-white/5">
+        <div className="flex bg-skin-surface p-1 rounded-xl border border-skin-border">
             <button 
                 onClick={() => { setPodcastType('Teaching'); setBlueprint(null); }}
-                className={`flex-1 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${podcastType === 'Teaching' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                className={`flex-1 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${podcastType === 'Teaching' ? 'bg-skin-accent text-skin-base shadow-lg' : 'text-skin-muted hover:text-skin-text'}`}
             >
                 Teaching Podcast
             </button>
             <button 
                 onClick={() => { setPodcastType('Standard'); setBlueprint(null); }}
-                className={`flex-1 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${podcastType === 'Standard' ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                className={`flex-1 py-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${podcastType === 'Standard' ? 'bg-skin-secondary text-skin-base shadow-lg' : 'text-skin-muted hover:text-skin-text'}`}
             >
                 Standard Podcast
             </button>
@@ -174,18 +174,18 @@ export const CurriculumBuilder: React.FC<PodcastGeneratorProps> = ({ sources, on
         {!blueprint && (
             <div className="space-y-4 animate-in fade-in">
                 <div>
-                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Episode Topic</label>
+                   <label className="block text-xs font-bold text-skin-muted uppercase tracking-widest mb-2">Episode Topic</label>
                    <textarea 
                      value={topic}
                      onChange={e => setTopic(e.target.value)}
-                     className="w-full h-24 glass-input rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:ring-1 focus:ring-indigo-500/50"
+                     className="w-full h-24 glass-input rounded-xl px-4 py-3 text-skin-text placeholder-skin-muted focus:ring-1 focus:ring-skin-accent"
                      placeholder="e.g. Explain the safety protocols and why they matter..."
                    />
                 </div>
 
                 {podcastType === 'Teaching' && (
                     <div>
-                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Target Audience</label>
+                        <label className="block text-xs font-bold text-skin-muted uppercase tracking-widest mb-2">Target Audience</label>
                         <div className="grid grid-cols-3 gap-3">
                             {['Beginner', 'Intermediate', 'Advanced'].map((a) => (
                                 <button
@@ -193,8 +193,8 @@ export const CurriculumBuilder: React.FC<PodcastGeneratorProps> = ({ sources, on
                                     onClick={() => setAudience(a)}
                                     className={`p-2 rounded-lg text-xs font-bold border transition-all ${
                                         audience === a
-                                        ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300'
-                                        : 'bg-slate-900 border-white/10 text-slate-400 hover:bg-slate-800'
+                                        ? 'bg-skin-accent-dim border-skin-accent text-skin-accent'
+                                        : 'bg-skin-surface border-skin-border text-skin-muted hover:bg-skin-surface-hover'
                                     }`}
                                 >
                                     {a}
@@ -208,34 +208,62 @@ export const CurriculumBuilder: React.FC<PodcastGeneratorProps> = ({ sources, on
 
         {/* Blueprint Review (Teaching Mode) */}
         {blueprint && podcastType === 'Teaching' && (
-            <div className="bg-slate-900/50 rounded-xl border border-white/10 p-6 animate-in zoom-in-95">
-                <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-sm font-bold text-white uppercase tracking-widest">Curriculum Blueprint</h3>
-                    <button onClick={() => setBlueprint(null)} className="text-xs text-indigo-400 hover:text-indigo-300">Edit Settings</button>
+            <div className="bg-skin-surface rounded-xl border border-skin-border p-6 animate-in zoom-in-95 space-y-6">
+                <div className="flex justify-between items-start">
+                    <h3 className="text-sm font-bold text-skin-text uppercase tracking-widest">Curriculum Blueprint</h3>
+                    <button onClick={() => setBlueprint(null)} className="text-xs text-skin-accent hover:text-skin-accent-hover">Edit Settings</button>
                 </div>
                 
-                <div className="space-y-4">
-                    <div>
-                        <span className="text-[10px] text-slate-500 uppercase font-bold">Objectives</span>
-                        <ul className="mt-1 space-y-1">
-                            {blueprint.learningObjectives.map((obj, i) => (
-                                <li key={i} className="text-xs text-slate-300 flex gap-2">
-                                    <span className="text-indigo-500">•</span> {obj}
-                                </li>
-                            ))}
-                        </ul>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                        <div>
+                            <span className="text-[10px] text-skin-muted uppercase font-bold block mb-2">Objectives</span>
+                            <ul className="space-y-1">
+                                {blueprint.learningObjectives.map((obj, i) => (
+                                    <li key={i} className="text-xs text-skin-text flex gap-2">
+                                        <span className="text-skin-secondary">•</span> {obj}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                        
+                        <div>
+                            <span className="text-[10px] text-skin-muted uppercase font-bold block mb-2">Common Misconceptions</span>
+                            <ul className="space-y-1">
+                                {blueprint.misconceptions?.map((misc, i) => (
+                                    <li key={i} className="text-xs text-skin-text flex gap-2">
+                                        <span className="text-red-400">×</span> {misc}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
                     </div>
-                    
+
                     <div className="space-y-2">
-                        <span className="text-[10px] text-slate-500 uppercase font-bold">Chapter Plan</span>
+                        <span className="text-[10px] text-skin-muted uppercase font-bold block mb-1">Lesson Plan</span>
                         {blueprint.chapters.map((ch, i) => (
-                            <div key={i} className="bg-slate-800/50 p-2 rounded border border-white/5">
-                                <div className="text-xs font-bold text-white mb-1">{i+1}. {ch.title}</div>
-                                <div className="text-[10px] text-slate-400">{ch.objective}</div>
+                            <div key={i} className="bg-skin-base/30 p-3 rounded-lg border border-skin-border">
+                                <div className="flex justify-between items-start">
+                                    <div className="text-xs font-bold text-skin-text mb-1">{i+1}. {ch.title}</div>
+                                </div>
+                                <div className="text-[10px] text-skin-muted">{ch.objective}</div>
                             </div>
                         ))}
                     </div>
                 </div>
+
+                {blueprint.checkpoints && blueprint.checkpoints.length > 0 && (
+                    <div className="pt-4 border-t border-skin-border">
+                        <span className="text-[10px] text-skin-muted uppercase font-bold block mb-2">Knowledge Checkpoints</span>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                            {blueprint.checkpoints.map((cp, i) => (
+                                <div key={i} className="bg-skin-accent-dim border border-skin-accent/20 p-2 rounded text-[10px] text-skin-text">
+                                    <span className="font-bold text-skin-accent mr-1">Q{i+1}:</span> {cp}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         )}
         
@@ -246,14 +274,9 @@ export const CurriculumBuilder: React.FC<PodcastGeneratorProps> = ({ sources, on
                     <div className="flex gap-3">
                          <button 
                              onClick={() => {
-                                 // Re-run the final logic but this time pass null for audio
-                                 // Or better, just trigger the onPodcastGenerated with a text-only episode since we have the script
-                                 // For simplicity, we assume script exists if we got here.
-                                 // NOTE: In a real app we'd need to persist the script state here to use it.
-                                 // For this fix, just asking user to try later is safer than complexity,
-                                 // OR implemented "Switch to Text Mode" if we stored the script result.
+                                 // Retry logic placeholder
                              }}
-                             className="hidden px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-xs uppercase font-bold"
+                             className="hidden px-4 py-2 bg-skin-surface hover:bg-skin-surface-hover rounded text-xs uppercase font-bold"
                          >
                              Retry Text Only
                          </button>
@@ -263,14 +286,14 @@ export const CurriculumBuilder: React.FC<PodcastGeneratorProps> = ({ sources, on
         )}
 
         {status && (
-             <div className="p-4 bg-slate-800/50 rounded-xl flex items-center justify-center gap-3">
-                 <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                 <span className="text-indigo-400 text-xs font-mono tracking-widest uppercase animate-pulse">{status}</span>
+             <div className="p-4 bg-skin-surface rounded-xl flex items-center justify-center gap-3">
+                 <div className="w-4 h-4 border-2 border-skin-accent border-t-transparent rounded-full animate-spin"></div>
+                 <span className="text-skin-accent text-xs font-mono tracking-widest uppercase animate-pulse">{status}</span>
              </div>
         )}
         
         <div className="pt-4 flex items-center justify-between">
-            <button onClick={onCancel} className="text-slate-400 hover:text-white text-sm">Back</button>
+            <button onClick={onCancel} className="text-skin-muted hover:text-skin-text text-sm">Back</button>
             
             {podcastType === 'Teaching' && !blueprint ? (
                 <button 

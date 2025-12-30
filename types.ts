@@ -11,11 +11,22 @@ export enum ConnectionState {
   ERROR = 'ERROR',
 }
 
+// NEW: Granular Voice State Machine
+export enum VoiceState {
+  IDLE = 'IDLE',
+  LISTENING = 'LISTENING',
+  THINKING = 'THINKING',
+  SPEAKING = 'SPEAKING',
+  INTERRUPTED = 'INTERRUPTED',
+  RESUMING = 'RESUMING'
+}
+
 export interface TranscriptionItem {
   id: string;
   role: 'user' | 'assistant' | 'system';
   text: string;
   timestamp: Date;
+  isFinal?: boolean;
 }
 
 export interface VisualizerData {
@@ -25,20 +36,67 @@ export interface VisualizerData {
 
 export type VoiceName = 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Zephyr' | 'Orus' | 'Aoede';
 
+// Theme Definition
+export type AppTheme = 'nexus' | 'obsidian' | 'aether' | 'vertex' | 'crimson' | 'midnight' | 'cyber' | 'aurora' | 'solaris' | 'royale' | 'terminal' | 'custom';
+
+export interface CustomThemeConfig {
+    base: string;
+    surface: string;
+    accent: string;
+    text: string;
+    muted: string;
+}
+
+// ENHANCED: Voice Profile with Behavioral Traits
 export interface VoiceProfile {
   id: string;
   name: string;
   voiceName: VoiceName;
+  
+  // Vocal Characteristics
   pace: number; // 0.8 to 1.2
   warmth: number; // 0-10
   energy: number; // 0-10
+  
+  // Behavioral Traits (Tier 3-6)
   brevity: number; // 0-10
   formality: number; // 0-10
-  firmness: number; // 0-10 (New)
+  firmness: number; // 0-10
+  challengeLevel: number; // 0-10 
+  emotionalDrift: boolean; 
   pauseDensity: number; // 0-10
-  disfluency: 'off' | 'low';
+  
+  // --- NEW: Advanced Realism Controls ---
+  
+  // Conversational Authenticity
+  microHesitation: 'off' | 'low' | 'natural';
+  selfCorrection: boolean;
+  sentenceCompletionVariability: boolean;
+  
+  // Cognitive Timing
+  thoughtDelay: 'off' | 'short' | 'variable';
+  midResponseAdaptation: boolean;
+  
+  // Acoustic Nuance
+  breathPlacement: 'off' | 'subtle';
+  prosodicDrift: boolean;
+  emphasisDecay: boolean;
+  
+  // Human Imperfection
+  naturalFillers: 'off' | 'rare' | 'contextual';
   laughter: 'off' | 'rare';
-  breathiness: 'off' | 'subtle';
+  falseStartAllowance: boolean;
+}
+
+// NEW: Multi-Layer Memory System
+export interface MemoryLayer {
+  session: string[]; // Facts from this session
+  user: { // Long-term preferences
+    name: string;
+    pacePreference: string;
+    tonePreference: string;
+  };
+  workspace: string[]; // Shared domain knowledge
 }
 
 // --- LEARNING & PODCAST ---
@@ -61,7 +119,6 @@ export interface PodcastScriptLine {
 
 export type PodcastType = 'Standard' | 'Teaching';
 
-// Updated Chapter Interface
 export interface PodcastChapter {
   id: string;
   title: string;
@@ -72,7 +129,6 @@ export interface PodcastChapter {
   summary?: string;
 }
 
-// Feature 2: Learning Moments
 export type MomentType = 'KeyTakeaway' | 'Reflection' | 'Quiz' | 'Definition';
 export interface LearningMoment {
   id: string;
@@ -80,7 +136,7 @@ export interface LearningMoment {
   timestamp: number;
   type: MomentType;
   content: string;
-  action?: string; // e.g., "Think about X"
+  action?: string;
 }
 
 export interface PodcastBlueprint {
@@ -93,6 +149,8 @@ export interface PodcastBlueprint {
     keyPoints: string[];
   }[];
   glossary: { term: string; definition: string }[];
+  checkpoints?: string[];
+  misconceptions?: string[];
 }
 
 export interface PodcastEpisode {
@@ -104,7 +162,7 @@ export interface PodcastEpisode {
   script: PodcastScriptLine[];
   blueprint?: PodcastBlueprint;
   chapters?: PodcastChapter[];
-  moments?: LearningMoment[]; // New
+  moments?: LearningMoment[];
   audioBase64?: string;
   coverImageBase64?: string;
   sourceIds: string[];
@@ -135,14 +193,14 @@ export interface CallRequest {
   createdAt: Date;
   transcript?: TranscriptionItem[];
   answerCards?: AnswerCard[];
-  aiSummary?: string; // Generated during screening
-  suggestedResponses?: string[]; // Generated during screening
+  aiSummary?: string; 
+  suggestedResponses?: string[];
 }
 
-// --- FEATURE 4: TELEMETRY ---
+// --- FEATURE 4: TELEMETRY & ADMIN ---
 
 export type TelemetryLevel = 'info' | 'warn' | 'error' | 'debug';
-export type TelemetryCategory = 'audio' | 'network' | 'producer' | 'system';
+export type TelemetryCategory = 'audio' | 'network' | 'producer' | 'system' | 'drift';
 
 export interface AudioTelemetryEvent {
   id: string;
@@ -151,4 +209,14 @@ export interface AudioTelemetryEvent {
   category: TelemetryCategory;
   message: string;
   data?: any;
+}
+
+export interface AdminConfig {
+  godMode: boolean; // Disables safety filters and system prompt constraints
+  forceMonetization: boolean; // Simulates free tier limits
+  debugLatency: boolean; // Shows latency graphs
+  safetyFilters: 'strict' | 'relaxed' | 'off'; // Controls LLM safety settings
+  temperature: number; // 0.0 to 2.0
+  maintenanceMode: boolean; // Simulates system downtime
+  systemBroadcast?: string; // Message to display to all users
 }

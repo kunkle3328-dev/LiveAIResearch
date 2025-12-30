@@ -18,6 +18,11 @@ export const Visualizer: React.FC<VisualizerProps> = ({ volume, isActive }) => {
     let animationId: number;
     let phase = 0;
 
+    // Helper to get CSS variable color
+    const getVarColor = (name: string) => {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    };
+
     const render = () => {
       // 1. Fully clear the canvas (Transparent background)
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -32,13 +37,18 @@ export const Visualizer: React.FC<VisualizerProps> = ({ volume, isActive }) => {
       // Global phase progression
       phase += 0.08;
 
-      // Create Gradient
+      // Create Gradient using Theme Variables
+      // We grab the variable values on every frame to support live theme switching
+      const accentColor = getVarColor('--color-accent');
+      // Simple parse to add transparency if it's hex, but assuming hex for simplicity of logic or we use the var directly if canvas supports it (it does usually for fill styles but not rgba manipulation easily). 
+      // For robustness with the variables defined in index.html (which are hex or rgba), we will just use the accent color directly for the main stroke.
+      
       const gradient = ctx.createLinearGradient(0, 0, width, 0);
-      gradient.addColorStop(0, 'rgba(6, 182, 212, 0)'); // Fade in cyan
-      gradient.addColorStop(0.2, 'rgba(6, 182, 212, 0.8)'); // Cyan
-      gradient.addColorStop(0.5, 'rgba(99, 102, 241, 1)'); // Indigo
-      gradient.addColorStop(0.8, 'rgba(236, 72, 153, 0.8)'); // Pink
-      gradient.addColorStop(1, 'rgba(236, 72, 153, 0)'); // Fade out pink
+      gradient.addColorStop(0, 'rgba(0,0,0,0)'); 
+      gradient.addColorStop(0.2, accentColor); 
+      gradient.addColorStop(0.5, accentColor);
+      gradient.addColorStop(0.8, accentColor); 
+      gradient.addColorStop(1, 'rgba(0,0,0,0)');
 
       // Draw Main Wave
       ctx.beginPath();
@@ -49,7 +59,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({ volume, isActive }) => {
       
       if (isActive) {
           ctx.shadowBlur = 15;
-          ctx.shadowColor = 'rgba(99, 102, 241, 0.5)';
+          ctx.shadowColor = accentColor;
       } else {
           ctx.shadowBlur = 0;
       }
@@ -78,7 +88,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({ volume, isActive }) => {
 
       // Draw Secondary Echo Wave (Thinner, lower opacity)
       ctx.beginPath();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.strokeStyle = `rgba(255, 255, 255, 0.2)`;
       ctx.lineWidth = 1;
       
       for (let x = 0; x <= width; x += 8) {

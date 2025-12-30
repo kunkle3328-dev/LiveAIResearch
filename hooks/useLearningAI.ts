@@ -50,7 +50,9 @@ export const useLearningAI = () => {
         Create a structured learning plan.
         1. Define 3-5 clear Learning Objectives.
         2. Outline 4-6 Chapters that logically progress from basics to advanced.
-        3. Extract 3-5 key glossary terms from the sources.
+        3. Identify 3-5 "Common Misconceptions" that learners often have about this topic.
+        4. Create 3 "Checkpoint Questions" to facilitate reflection.
+        5. Extract 3-5 key glossary terms.
         
         OUTPUT JSON:
         {
@@ -64,6 +66,8 @@ export const useLearningAI = () => {
               "keyPoints": ["string"]
             }
           ],
+          "checkpoints": ["string"],
+          "misconceptions": ["string"],
           "glossary": [
             { "term": "string", "definition": "string" }
           ]
@@ -103,7 +107,7 @@ export const useLearningAI = () => {
 
       if (type === 'Teaching' && blueprint) {
          prompt = `
-            You are a "Teaching Podcast" host pair: Host (Energetic) and Expert (Calm).
+            You are a "Teaching Podcast" host pair: Host (Energetic, Curious) and Expert (Calm, Authoritative).
             
             BLUEPRINT:
             ${JSON.stringify(blueprint)}
@@ -113,19 +117,15 @@ export const useLearningAI = () => {
             
             TASK:
             Write a COMPREHENSIVE, WORD-FOR-WORD script.
-            Target Length: 800-1000 words (approx 5-7 minutes).
+            Target Length: 1500-2500 words (approx 10-15 minutes).
             
-            STRUCTURE:
+            STRUCTURE & PEDAGOGY:
             - Iterate through EVERY chapter in the blueprint.
-            - For EACH chapter:
-              1. Host introduces the concept clearly.
-              2. Expert explains it using the sources.
-              3. Provide examples.
-              4. Brief discussion.
+            - Explicitly address the "Common Misconceptions" defined in the blueprint (remediate them).
+            - Insert "Checkpoints": Have the Host ask the listener a reflective question, pause briefly (narratively), and then the Expert explains the answer.
+            - Use analogies and examples from the sources.
             
-            IMPORTANT:
-            - Be concise but informative.
-            - Do not be repetitive.
+            Format the output strictly as JSON.
             
             OUTPUT JSON:
             {
@@ -147,7 +147,7 @@ export const useLearningAI = () => {
             ${sourceContext}
             
             Task: Create a deep-dive podcast script between "Host" (Energetic) and "Expert" (Calm).
-            Target Length: 800-1000 words (approx 5-7 minutes).
+            Target Length: 1000-1500 words (approx 7-10 minutes).
             Cover the topic clearly and engagingly.
             
             OUTPUT JSON:
@@ -343,7 +343,8 @@ export const useLearningAI = () => {
          return `SOURCE: ${s.title}\nCONTENT: ${content.substring(0, 20000)}...`;
      }).join('\n\n');
 
-     const prompt = `You are a helpful AI Tutor. Your goal is to answer the user's question comprehensively.
+     const prompt = `You are a helpful AI Tutor embedded in a Learning Podcast application.
+     Your goal is to answer the user's question about the podcast topic comprehensively.
      
      INSTRUCTIONS:
      1. FIRST, check the provided SOURCES below.
